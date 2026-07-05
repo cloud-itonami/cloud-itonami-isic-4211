@@ -7,4 +7,9 @@
  :itonami.blueprint/governor :construction-governor
  :itonami.blueprint/robotics true
  :itonami.blueprint/required-technologies [:robotics :identity :forms :dmn :bpmn :audit-ledger]
- :itonami.blueprint/status :public-oss}
+ :itonami.blueprint/status :public-oss
+ :itonami.blueprint/game {:id "building-site"
+                          :repo "gftdcojp/network-isekai"
+                          :path "public/games/itonami/building-site"
+                          :url "https://isekai.network/itonami/building-site"
+                          :adr "ADR-2607031000"}}
