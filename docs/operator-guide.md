@@ -1,5 +1,13 @@
 # Operator Guide
 
+> **Implementation status**: the disaster/severe-weather safety slice
+> of this guide (weather assessment, mandatory post-event inspection,
+> mail+phone alert dispatch, work-resume authorization, accident/
+> periodic report filing) is implemented in `src/construction` -- see
+> the README's "Implemented slice" section and `docs/adr/0001-
+> architecture.md`. The robot-dispatch example below (Day in the life)
+> is not yet implemented.
+
 ## First Deployment
 1. Register operator, sites, assets, personnel and robots.
 2. Import historical records.

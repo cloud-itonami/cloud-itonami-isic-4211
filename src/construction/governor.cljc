@@ -1,0 +1,284 @@
+(ns construction.governor
+  "Construction Governor -- the independent compliance layer named in
+  `blueprint.edn` (`:itonami.blueprint/governor :construction-
+  governor`) that earns the Construction Advisor the right to commit.
+  The LLM has no notion of labor-safety/disaster law, whether a site's
+  own measured weather figures actually still exceed its own
+  jurisdiction's regulatory trigger, whether a mandatory post-severe-
+  weather inspection has actually resolved its own reported hazard, or
+  when an act stops being a draft and becomes a real-world alert
+  dispatch, work-resume authorization, or legal report filing, so this
+  MUST be a separate system able to *reject* a proposal and fall back
+  to HOLD -- the construction-safety analog of `cloud-itonami-isic-
+  3030`'s Aerospace Manufacturing Governor.
+
+  Seven checks, in priority order, ALL HARD violations: a human
+  approver CANNOT override them (you don't get to approve your way
+  past a fabricated jurisdiction spec-basis, a disaster alert with no
+  human-approved weather determination behind it, a site still
+  measurably over its own legal weather threshold, an incomplete/
+  unresolved mandatory inspection, or a double dispatch/authorization/
+  report filing). The confidence/high-stakes gate is SOFT: it asks a
+  human to look, and the human may approve.
+
+    1. Legal-basis missing       -- did the `:weather/assess`/actuation
+                                     proposal cite an OFFICIAL source
+                                     (`construction.facts`), or invent
+                                     one?
+    2. No approved stop-work
+       assessment                -- for `:actuation/dispatch-alert`,
+                                     has a `:weather/assess` proposal
+                                     for this site actually been
+                                     committed (which itself always
+                                     required a human approval -- see
+                                     `construction.phase`, `:weather/
+                                     assess` is never in any phase's
+                                     `:auto` set) with a `:stop-work`/
+                                     `:review-required` recommendation
+                                     on file? This is what makes
+                                     `:actuation/dispatch-alert`'s
+                                     auto-commit exception (see check 7
+                                     / `construction.phase` ns
+                                     docstring) SAFE: the alert can
+                                     fire fast, but only on a
+                                     determination a human already
+                                     signed off on, never on the
+                                     advisor's say-so alone.
+    3. Weather still exceeds
+       threshold                 -- for `:actuation/authorize-resume`
+                                     in a `:quantitative`-threshold
+                                     jurisdiction (Japan), INDEPENDENTLY
+                                     recompute whether the site's own
+                                     recorded weather figures still
+                                     exceed its own jurisdiction's
+                                     regulatory trigger
+                                     (`construction.facts/weather-
+                                     threshold-exceeded?`) -- needs no
+                                     proposal inspection at all. This
+                                     is the SAME two-sided/threshold-
+                                     check family `aerospace.registry/
+                                     assembly-tolerance-out-of-range?`
+                                     established, applied here to a
+                                     jurisdiction-scoped legal trigger
+                                     instead of a per-unit spec bound.
+                                     DELIBERATELY does not fire for
+                                     `:qualitative` jurisdictions (USA,
+                                     DEU/EU) -- there is no numeric
+                                     bright line to independently
+                                     re-check there; the risk-
+                                     assessment judgment is the human
+                                     safety officer's, which the
+                                     permanent high-stakes gate below
+                                     (check 7) already routes to every
+                                     time. Never invent a threshold to
+                                     force those jurisdictions through
+                                     a HARD rule.
+    4. Inspection incomplete     -- for `:actuation/authorize-resume`,
+                                     has the mandatory post-severe-
+                                     weather/earthquake site inspection
+                                     actually been committed with a
+                                     `:resolved` verdict on file?
+    5. Unresolved hazard         -- reported by THIS proposal itself
+                                     (an `:inspection/screen` that just
+                                     found one), or already on file for
+                                     the site (`:inspection/screen`/
+                                     `:actuation/authorize-resume`).
+                                     Evaluated UNCONDITIONALLY, the SAME
+                                     discipline `aerospace.governor/
+                                     ndt-defect-unresolved-violations`
+                                     established for this fleet's NDT-
+                                     defect concept, applied here to a
+                                     site hazard.
+    6. Fabricated accident report -- `:actuation/file-accident-report`
+                                     for a site whose own
+                                     `:injury-occurred?` is false --
+                                     never file a report for a non-
+                                     event.
+    7. Confidence floor /
+       high-stakes gate           -- LLM confidence below threshold, OR
+                                     the op is `:actuation/authorize-
+                                     resume`/`:actuation/file-accident-
+                                     report`/`:actuation/file-periodic-
+                                     report` (REAL legal/safety-critical
+                                     acts) -> escalate to a human.
+                                     `:actuation/dispatch-alert` is
+                                     DELIBERATELY EXCLUDED from this
+                                     set -- see `construction.phase` ns
+                                     docstring 'Actuation' section for
+                                     why alert dispatch, uniquely among
+                                     this actor's actuation events, MAY
+                                     auto-commit when the governor is
+                                     clean.
+
+  Four more guards, double-dispatch/double-authorization/double-report
+  prevention, are enforced but NOT listed as numbered HARD checks above
+  because they need no upstream comparison at all --
+  `already-dispatched-violations`/`already-resumed-violations`/
+  `already-accident-reported-violations`/`already-periodic-reported-
+  violations` refuse to repeat the SAME actuation for the SAME site
+  twice, off dedicated boolean facts (never a `:status` value) -- the
+  same 'check a dedicated boolean, not status' discipline every prior
+  sibling governor's guards establish."
+  (:require [construction.facts :as facts]
+            [construction.store :as store]))
+
+(def confidence-floor 0.6)
+
+(def high-stakes
+  "Stakes grave enough to always require a human, even when clean.
+  Authorizing work-resume after a severe-weather/disaster hold, filing
+  a legal accident report, and filing a legal periodic-inspection
+  report are the three real-world actuation events this actor performs
+  that ALWAYS need a human. `:actuation/dispatch-alert` (warning site
+  workers) is intentionally NOT a member -- see `construction.phase` ns
+  docstring."
+  #{:actuation/authorize-resume :actuation/file-accident-report :actuation/file-periodic-report})
+
+;; ----------------------------- checks -----------------------------
+
+(defn- legal-basis-missing-violations
+  "A `:weather/assess` (or actuation) proposal with no legal-basis
+  citation is a HARD violation -- never invent a jurisdiction's
+  work-stoppage/inspection/reporting requirements."
+  [{:keys [op]} proposal]
+  (when (contains? #{:weather/assess :actuation/dispatch-alert :actuation/authorize-resume
+                     :actuation/file-accident-report :actuation/file-periodic-report} op)
+    (let [value (:value proposal)]
+      (when (or (empty? (:cites proposal))
+                (and (contains? value :spec-basis) (nil? (:spec-basis value))))
+        [{:rule :no-legal-basis
+          :detail "公式legal-basisの引用が無い提案は災害安全対応として扱えない"}]))))
+
+(defn- no-approved-stop-work-assessment-violations
+  "For `:actuation/dispatch-alert`, a `:weather/assess` for this site
+  must actually be COMMITTED (i.e. already human-approved, since
+  `:weather/assess` is never auto-eligible) with a `:stop-work`/
+  `:review-required` recommendation on file. This is what makes
+  `:actuation/dispatch-alert`'s own auto-commit exception safe: fast,
+  but only ever on a determination a human already signed off on."
+  [{:keys [op subject]} st]
+  (when (= op :actuation/dispatch-alert)
+    (let [wa (store/weather-assessment-of st subject)]
+      (when-not (contains? #{:stop-work :review-required} (:recommendation wa))
+        [{:rule :no-approved-stop-work-assessment
+          :detail (str subject " には人手承認済みの:stop-work/:review-required気象判定が無い状態での警報配信提案")}]))))
+
+(defn- weather-still-exceeds-threshold-violations
+  "For `:actuation/authorize-resume`, INDEPENDENTLY recompute whether
+  the site's own recorded weather figures still exceed its own
+  jurisdiction's regulatory trigger via `construction.facts/weather-
+  threshold-exceeded?`. Fires ONLY when that returns `true` (a
+  :quantitative jurisdiction confirmed still over threshold) --
+  `:qualitative`/`nil` never trip this HARD check (see ns docstring)."
+  [{:keys [op subject]} st]
+  (when (= op :actuation/authorize-resume)
+    (let [a (store/site st subject)]
+      (when (true? (facts/weather-threshold-exceeded? (:jurisdiction a) a))
+        [{:rule :weather-still-exceeds-threshold
+          :detail (str subject " の現在の気象実測値が法定基準を依然超過（wind=" (:wind-speed-actual a)
+                      " rain=" (:rainfall-actual a) " snow=" (:snowfall-actual a) "）")}]))))
+
+(defn- inspection-incomplete-violations
+  "For `:actuation/authorize-resume`, the mandatory post-severe-
+  weather/earthquake inspection must actually be committed with a
+  `:resolved` verdict -- do not trust the advisor's self-reported
+  confidence alone."
+  [{:keys [op subject]} st]
+  (when (= op :actuation/authorize-resume)
+    (let [insp (store/inspection-of st subject)]
+      (when-not (= :resolved (:verdict insp))
+        [{:rule :inspection-incomplete
+          :detail "義務付けられた悪天候後点検が未実施または未解決の状態での作業再開authorize提案"}]))))
+
+(defn- unresolved-hazard-violations
+  "An unresolved hazard -- reported by THIS proposal (e.g. an
+  `:inspection/screen` that itself just found one), or already on file
+  in the store for the site (`:inspection/screen`/`:actuation/
+  authorize-resume`) -- is a HARD, un-overridable hold. Evaluated
+  UNCONDITIONALLY so the screening op itself can HARD-hold on its own
+  finding."
+  [{:keys [op subject]} proposal st]
+  (let [hit-in-proposal? (= :unresolved (get-in proposal [:value :verdict]))
+        site-id (when (contains? #{:inspection/screen :actuation/authorize-resume} op) subject)
+        hit-on-file? (and site-id (= :unresolved (:verdict (store/inspection-of st site-id))))]
+    (when (or hit-in-proposal? hit-on-file?)
+      [{:rule :unresolved-hazard
+        :detail "未解決のハザードがある状態での点検確定/作業再開提案は進められない"}])))
+
+(defn- fabricated-accident-report-violations
+  "For `:actuation/file-accident-report`, the site's own
+  `:injury-occurred?` must be true -- never file a report for a
+  non-event."
+  [{:keys [op subject]} st]
+  (when (= op :actuation/file-accident-report)
+    (let [a (store/site st subject)]
+      (when-not (true? (:injury-occurred? a))
+        [{:rule :fabricated-accident-report
+          :detail (str subject " は負傷等の発生記録が無く、労働者死傷病報告相当の提出提案は成立しない")}]))))
+
+(defn- already-dispatched-violations
+  [{:keys [op subject]} st]
+  (when (= op :actuation/dispatch-alert)
+    (when (store/site-already-dispatched? st subject)
+      [{:rule :already-dispatched
+        :detail (str subject " は既に警報配信済み")}])))
+
+(defn- already-resumed-violations
+  [{:keys [op subject]} st]
+  (when (= op :actuation/authorize-resume)
+    (when (store/site-already-resumed? st subject)
+      [{:rule :already-resumed
+        :detail (str subject " は既に作業再開authorize済み")}])))
+
+(defn- already-accident-reported-violations
+  [{:keys [op subject]} st]
+  (when (= op :actuation/file-accident-report)
+    (when (store/site-already-accident-reported? st subject)
+      [{:rule :already-accident-reported
+        :detail (str subject " は既に労働者死傷病報告相当を提出済み")}])))
+
+(defn- already-periodic-reported-violations
+  [{:keys [op subject]} st]
+  (when (= op :actuation/file-periodic-report)
+    (when (store/site-already-periodic-reported? st subject)
+      [{:rule :already-periodic-reported
+        :detail (str subject " は既に定期報告相当を提出済み")}])))
+
+(defn check
+  "Censors a Construction Advisor proposal against the governor rules.
+  Returns {:ok? bool :violations [..] :confidence c :escalate? bool
+  :high-stakes? bool :hard? bool}."
+  [request _context proposal st]
+  (let [hard (into []
+                   (concat (legal-basis-missing-violations request proposal)
+                           (no-approved-stop-work-assessment-violations request st)
+                           (weather-still-exceeds-threshold-violations request st)
+                           (inspection-incomplete-violations request st)
+                           (unresolved-hazard-violations request proposal st)
+                           (fabricated-accident-report-violations request st)
+                           (already-dispatched-violations request st)
+                           (already-resumed-violations request st)
+                           (already-accident-reported-violations request st)
+                           (already-periodic-reported-violations request st)))
+        conf (:confidence proposal 0.0)
+        low? (< conf confidence-floor)
+        stakes? (boolean (high-stakes (:stake proposal)))
+        hard? (boolean (seq hard))]
+    {:ok?          (and (not hard?) (not low?) (not stakes?))
+     :violations   hard
+     :confidence   conf
+     :hard?        hard?
+     :escalate?    (and (not hard?) (or low? stakes?))
+     :high-stakes? stakes?}))
+
+(defn hold-fact
+  "The audit fact written when a proposal is rejected (HOLD)."
+  [request context verdict]
+  {:t          :governor-hold
+   :op         (:op request)
+   :actor      (:actor-id context)
+   :subject    (:subject request)
+   :disposition :hold
+   :basis      (mapv :rule (:violations verdict))
+   :violations (:violations verdict)
+   :confidence (:confidence verdict)})

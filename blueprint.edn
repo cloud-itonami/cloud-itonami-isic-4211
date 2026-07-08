@@ -6,10 +6,21 @@
  :itonami.blueprint/social-impact [:housing-access :worker-safety :local-economy]
  :itonami.blueprint/governor :construction-governor
  :itonami.blueprint/robotics true
- :itonami.blueprint/required-technologies [:robotics :identity :forms :dmn :bpmn :audit-ledger]
+ :itonami.blueprint/required-technologies [:robotics :identity :forms :dmn :bpmn :audit-ledger :notifications]
  :itonami.blueprint/status :public-oss
  :itonami.blueprint/game {:id "building-site"
                           :repo "gftdcojp/network-isekai"
                           :path "public/games/itonami/building-site"
                           :url "https://isekai.network/itonami/building-site"
-                          :adr "ADR-2607031000"}}
+                          :adr "ADR-2607031000"}
+ :itonami.blueprint/maturity :partially-implemented
+ :itonami.blueprint/implemented-slice
+ "disaster/severe-weather safety: `src/construction` -- Construction
+ Advisor (LLM proposal-only) ⊣ Construction Governor (legal-basis/
+ threshold/inspection/report hard-gates), per-jurisdiction legal-basis
+ catalog (JPN/USA/DEU, `construction.facts`) with real official
+ sources, and mail+phone (Resend+Twilio) alert dispatch
+ (`construction.notify`). Physical robot-dispatch ops described in
+ `docs/operator-guide.md`'s Day-in-the-life example (panel placement
+ etc.) are NOT part of this slice -- separate follow-up, same governor
+ pattern."}
