@@ -148,6 +148,21 @@ backed default) and `DatomicStore` (`langchain.db`-backed), proven to
 satisfy the same contract in `test/construction/store_contract_test.clj`
 -- the same seam every sibling actor uses.
 
+### Decision 9: `blueprint.edn` merge with the concurrent network-isekai game reference (PR #1)
+
+Between this branch's work starting and its push, `origin/main`
+advanced two commits (`ed6caa0`/`1d2633c`, PR #1) adding
+`:itonami.blueprint/game` (a reference to the `building-site`
+minigame in `gftdcojp/network-isekai`, ADR-2607031000) to the same
+`blueprint.edn` this ADR's build also edits (`:required-technologies`
+`:notifications`, `:maturity`, `:implemented-slice`). Per this
+repo's git-sync discipline (fetch + `--ff-only`, never rebase), the
+two edits were reconciled by hand -- both additive, non-overlapping
+keys in the same top-level map, so the merge is a straight union with
+no semantic conflict: `blueprint.edn` now carries `:game` (PR #1) AND
+`:maturity`/`:implemented-slice`/the extended `:required-technologies`
+(this ADR) together. No content from either branch was dropped.
+
 ## Alternatives considered
 
 - **A single "site" that is ALSO the storm-episode record, re-used
@@ -191,3 +206,30 @@ satisfy the same contract in `test/construction/store_contract_test.clj`
   other namespace stays pure per its own contract, matching
   `cloud-itonami.mail`'s isolation discipline in the sibling
   gftdcojp/cloud-itonami repo.
+- `blueprint.edn` cleanly absorbed PR #1's concurrent `:game` key
+  (Decision 9) -- confirms the "additive keys in a flat top-level EDN
+  map" shape this fleet's blueprints use stays merge-friendly even
+  under genuinely concurrent edits from independent sessions.
+
+## Follow-ups (not done in this ADR)
+
+- `kotoba-lang/industry`'s `resources/kotoba/industry/registry.edn`
+  entry for `"4211"` is stale: `:repo` points at
+  `https://github.com/gftdcojp/cloud-itonami-4211` (wrong org, missing
+  the `isic-` infix -- the real repo is `cloud-itonami/cloud-itonami-
+  isic-4211`) and `:business-id` has the same missing-infix bug; the
+  entry also has no `:maturity` field at all (most of that registry's
+  642 other entries do). Left unfixed here because promoting a
+  registry entry to `:implemented` in that fleet's tracking system
+  (`docs/cloud-itonami.md`'s running tally, `test/kotoba/
+  industry_test.clj`'s hardcoded count assertions) is that repo's own
+  workflow and this build is only `:partially-implemented` (robot-
+  dispatch is out of scope, see Decision 1) -- a follow-up PR there
+  should fix the stale fields and decide how (or whether) a
+  `:partially-implemented` tier fits that registry's existing
+  three-tier (`:spec`/`:blueprint`/`:implemented`) counting invariant
+  before touching it.
+- Robot-dispatch (panel placement etc., the Operator Guide's Day-in-
+  the-life example) remains unimplemented -- a separate follow-up
+  slice of the same `:construction-governor`, reusing this build's
+  Store/Phase scaffolding.
