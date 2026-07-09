@@ -24,6 +24,23 @@
     (is (not (contains? auto :actuation/file-periodic-report))
         (str "phase " n " must not auto-commit :actuation/file-periodic-report"))))
 
+(deftest build-dispatch-placement-never-auto-at-any-phase
+  (testing "a physical robot placement is a real-world act -- never auto-eligible, like every other build/handover/resume/report actuation"
+    (doseq [[n {:keys [auto]}] phase/phases]
+      (is (not (contains? auto :build/dispatch-placement))
+          (str "phase " n " must not auto-commit :build/dispatch-placement")))))
+
+(deftest handover-complete-never-auto-at-any-phase
+  (testing "handing over a structure is a real-world act -- never auto-eligible at any phase"
+    (doseq [[n {:keys [auto]}] phase/phases]
+      (is (not (contains? auto :handover/complete))
+          (str "phase " n " must not auto-commit :handover/complete")))))
+
+(deftest build-and-handover-are-write-ops
+  (testing "the build ops ARE members of write-ops (governor-gated like any write) even though never auto"
+    (is (contains? phase/write-ops :build/dispatch-placement))
+    (is (contains? phase/write-ops :handover/complete))))
+
 (deftest inspection-screen-never-auto-at-any-phase
   (testing "screening carries no direct capital risk, but is still never auto-eligible, matching every sibling screening op in this fleet"
     (doseq [[n {:keys [auto]}] phase/phases]

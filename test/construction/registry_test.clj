@@ -68,6 +68,33 @@
   (let [doc (r/render-periodic-report (assoc sample-site :jurisdiction "USA") "USA-PDR-000000")]
     (is (re-find #"NOT COVERED" doc))))
 
+;; ----------------------------- register-placement-dispatch / register-handover-completion -----------------------------
+
+(deftest placement-dispatch-assigns-placement-number
+  (let [result (r/register-placement-dispatch "site-4" "JPN" 0)]
+    (is (= (get result "placement_number") "JPN-PLC-000000"))
+    (is (= (get-in result ["record" "site_id"]) "site-4"))
+    (is (= (get-in result ["record" "kind"]) "placement-dispatch-draft"))
+    (is (= (get-in result ["record" "immutable"]) true))))
+
+(deftest handover-completion-assigns-handover-number
+  (let [result (r/register-handover-completion "site-4" "JPN" 5)]
+    (is (= (get result "handover_number") "JPN-HDO-000005"))
+    (is (= (get-in result ["record" "kind"]) "handover-completion-draft"))))
+
+(deftest placement-and-handover-validation-rules
+  (is (thrown? Exception (r/register-placement-dispatch "" "JPN" 0)))
+  (is (thrown? Exception (r/register-placement-dispatch "site-4" "" 0)))
+  (is (thrown? Exception (r/register-placement-dispatch "site-4" "JPN" -1)))
+  (is (thrown? Exception (r/register-handover-completion "" "JPN" 0)))
+  (is (thrown? Exception (r/register-handover-completion "site-4" "JPN" -1))))
+
+(deftest handover-certificate-cites-completion-inspection-basis-inline
+  (let [doc (r/render-handover-certificate sample-site "JPN-HDO-000000")]
+    (is (re-find #"JPN-HDO-000000" doc))
+    (is (re-find #"建築基準法 第7条" doc))
+    (is (re-find #"引渡" doc))))
+
 (deftest history-is-append-only
   (let [c1 (r/register-alert-dispatch "site-1" "JPN" 0)
         hist (r/append [] c1)

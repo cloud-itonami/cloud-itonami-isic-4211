@@ -1,29 +1,35 @@
 (ns construction.registry
   "Pure-function alert-dispatch / work-resume-authorization / accident-
   report / periodic-report record construction -- an append-only
-  construction-site disaster-safety book-of-record draft.
+  construction-site book-of-record draft. Also builds the ROBOT-
+  DISPATCH (build/handover) records: a robot panel-placement dispatch
+  and a structure handover completion, the physical-build half of this
+  actor's actuation surface.
 
   Like every sibling actor's registry, there is no single international
-  check-digit standard for an alert-dispatch, resume-authorization or
-  report reference number -- every operator/jurisdiction assigns its
-  own reference format. This namespace does NOT invent one; it builds
-  a jurisdiction-scoped sequence number and validates the record's
-  required fields, the same honest, non-fabricating discipline
-  `construction.facts` uses.
+  check-digit standard for an alert-dispatch, resume-authorization,
+  report, placement or handover reference number -- every
+  operator/jurisdiction assigns its own reference format. This
+  namespace does NOT invent one; it builds a jurisdiction-scoped
+  sequence number and validates the record's required fields, the same
+  honest, non-fabricating discipline `construction.facts` uses.
 
   `render-accident-report` / `render-periodic-report` produce the
   actual human-readable report DOCUMENT text (not just an internal EDN
   record) -- this is the concrete 報告書作成 (report generation)
   deliverable, citing the jurisdiction's legal basis inline so the
   document is self-evidencing about which law it is filed under.
+  `render-handover-certificate` produces the analogous completion/
+  handover certificate document, citing the jurisdiction's building-
+  code completion-inspection basis.
 
   This namespace is pure data + pure functions -- no I/O, no network
   call to any real labor-bureau/building-authority filing system, no
   mail/phone send. It builds the RECORD/DOCUMENT an operator would
   keep and submit, not the act of submitting it or notifying anyone
-  (that is `construction.operation`'s `:actuation/*` ops + `construction.
-  notify`, always human-gated except `:actuation/dispatch-alert` -- see
-  README `Actuation`)."
+  (that is `construction.operation`'s `:actuation/*`/:build/*/:handover/*
+  ops + `construction.notify`, always human-gated except
+  `:actuation/dispatch-alert` -- see README `Actuation`)."
   (:require [clojure.string :as str]
             [construction.facts :as facts]))
 
@@ -105,6 +111,48 @@
                "site_id" site-id "jurisdiction" jurisdiction "immutable" true}
      "report_number" report-number}))
 
+(defn register-placement-dispatch
+  "Validate + construct the ROBOT PLACEMENT-DISPATCH registration DRAFT
+  -- the operator's own act of dispatching a construction robot to
+  physically place a building element (e.g. an exterior-envelope
+  panel), the real-world build actuation. Pure function -- does not
+  move any real hardware; it builds the RECORD an operator would keep.
+  `construction.governor` independently re-verifies an ISSUED BUILDING
+  PERMIT is on file for this site before this is ever allowed to commit
+  (you cannot place a building element without 建築確認 / IBC §105
+  permit / BauO Baugenehmigung)."
+  [site-id jurisdiction sequence]
+  (when-not (and site-id (not= site-id ""))
+    (throw (ex-info "placement-dispatch: site_id required" {})))
+  (when-not (and jurisdiction (not= jurisdiction ""))
+    (throw (ex-info "placement-dispatch: jurisdiction required" {})))
+  (when (< sequence 0)
+    (throw (ex-info "placement-dispatch: sequence must be >= 0" {})))
+  (let [placement-number (str (str/upper-case jurisdiction) "-PLC-" (zero-pad sequence 6))]
+    {"record" {"record_id" placement-number "kind" "placement-dispatch-draft"
+               "site_id" site-id "jurisdiction" jurisdiction "immutable" true}
+     "placement_number" placement-number}))
+
+(defn register-handover-completion
+  "Validate + construct the STRUCTURE HANDOVER-COMPLETION registration
+  DRAFT -- the operator's own act of handing over the completed,
+  inspected structure (引渡し), the real-world handover actuation. Pure
+  function -- `construction.governor` independently re-verifies BOTH an
+  ISSUED PERMIT and a PASSED COMPLETION INSPECTION are on file before
+  this is ever allowed to commit (you cannot hand over a structure
+  without 建築基準法 第7条 完了検査 / IBC §111 CO / BauO Abnahme)."
+  [site-id jurisdiction sequence]
+  (when-not (and site-id (not= site-id ""))
+    (throw (ex-info "handover-completion: site_id required" {})))
+  (when-not (and jurisdiction (not= jurisdiction ""))
+    (throw (ex-info "handover-completion: jurisdiction required" {})))
+  (when (< sequence 0)
+    (throw (ex-info "handover-completion: sequence must be >= 0" {})))
+  (let [handover-number (str (str/upper-case jurisdiction) "-HDO-" (zero-pad sequence 6))]
+    {"record" {"record_id" handover-number "kind" "handover-completion-draft"
+               "site_id" site-id "jurisdiction" jurisdiction "immutable" true}
+     "handover_number" handover-number}))
+
 ;; ----------------------------- report documents -----------------------------
 
 (defn render-accident-report
@@ -141,6 +189,26 @@
                                                         "no jurisdiction-level basis on file; do not fabricate one"))) "\n"
          "Source: " (or periodic-report-provenance "n/a") "\n\n"
          "## Status\nDraft -- pending human safety-officer review and submission.\n")))
+
+(defn render-handover-certificate
+  "Human-readable HANDOVER-COMPLETION certificate document text, citing
+  the jurisdiction's building-code completion-inspection basis inline
+  -- the concrete 引渡し (handover) deliverable, the build-slice
+  analog of `render-periodic-report`. `site` is the site record at
+  handover time; `handover-number` is from `register-handover-
+  completion`."
+  [{:keys [id name jurisdiction]} handover-number]
+  (let [{:keys [completion-inspection-basis completion-inspection-provenance
+                permit-basis owner-authority]} (facts/spec-basis jurisdiction)]
+    (str "# Structure Handover / Completion Certificate (引渡証 相当)\n\n"
+         "Handover number: " handover-number "\n"
+         "Site: " name " (" id ")\n"
+         "Jurisdiction: " jurisdiction "\n"
+         "Filed with: " owner-authority "\n"
+         "Completion-inspection basis: " completion-inspection-basis "\n"
+         "Permit basis on record: " (or permit-basis "n/a") "\n"
+         "Source: " completion-inspection-provenance "\n\n"
+         "## Status\nDraft -- pending human safety-officer sign-off and final acceptance.\n")))
 
 (defn append [history result]
   (conj (vec history) (get result "record")))

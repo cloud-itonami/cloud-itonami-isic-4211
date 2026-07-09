@@ -54,7 +54,20 @@
   report` (nil where no federal/EU-wide single equivalent exists --
   reported honestly, not fabricated). `:inspection-evidence` mirrors
   the mandatory post-severe-weather/earthquake site-inspection
-  checklist `:inspection/screen` drafts against."
+  checklist `:inspection/screen` drafts against.
+
+  `:permit-basis` / `:permit-provenance` /
+  `:completion-inspection-basis` / `:completion-inspection-provenance`
+  back the ROBOT-DISPATCH (build/handover) slice -- the per-jurisdiction
+  BUILDING-CODE permit + completion-inspection regime the Construction
+  Governor HARD-requires before a physical robot placement can be
+  dispatched or a structure handed over (建築基準法 第6条 建築確認 /
+  第7条 完了検査; IBC §105 permit / §111 certificate of occupancy;
+  Landesbauordnung Baugenehmigung / Abnahme + EU Construction Products
+  Regulation 305/2011). Same G2 citation shape as the labor-safety
+  entries above; reported HONESTLY (the USA's IBC is a model code, not
+  federal statute, and German BauO is state-level -- neither is dressed
+  up as a federal law it isn't)."
   {"JPN" {:name "Japan"
           :owner-authority "厚生労働省 (労働基準監督署) / 国土交通省"
           :legal-basis "労働安全衛生規則 第522条（強風・大雨・大雪等の悪天候時の高所作業中止）・第655条（悪天候・中震以上の地震後の足場等点検義務）"
@@ -69,7 +82,11 @@
           :accident-report-basis "労働安全衛生規則 第97条（労働者死傷病報告）"
           :accident-report-provenance "https://laws.e-gov.go.jp/law/347M50002000032"
           :periodic-report-basis "建築基準法 第12条（特定建築物等定期報告制度、通称12条点検）"
-          :periodic-report-provenance "https://www.mlit.go.jp/jutakukentiku/build/jutakukentiku_house_tk_000039.html"}
+          :periodic-report-provenance "https://www.mlit.go.jp/jutakukentiku/build/jutakukentiku_house_tk_000039.html"
+          :permit-basis "建築基準法 第6条（建築確認 -- 建築主事等の確認申請・確認済証の交付を受けるまで工事に着工できない）"
+          :permit-provenance "https://laws.e-gov.go.jp/law/325AC0000000201"
+          :completion-inspection-basis "建築基準法 第7条（完了検査 -- 工事完了後、建築主事等の完了検査に合格し検査済証の交付を受けなければ用途変更・引渡しができない）"
+          :completion-inspection-provenance "https://laws.e-gov.go.jp/law/325AC0000000201"}
    "USA" {:name "United States"
           :owner-authority "Occupational Safety and Health Administration (OSHA), U.S. Department of Labor"
           :legal-basis "OSH Act §5(a)(1) General Duty Clause / 29 CFR 1926.20 (General Safety and Health Provisions, competent-person inspections)"
@@ -85,7 +102,12 @@
           :accident-report-provenance "https://www.osha.gov/recordkeeping"
           :periodic-report-basis nil
           :periodic-report-provenance nil
-          :periodic-report-note "No single federal periodic-report analog to Japan's Building Standards Act Art.12 -- building/equipment periodic inspection is set by state/local Authority Having Jurisdiction (AHJ) codes, not surveyed here."}
+          :periodic-report-note "No single federal periodic-report analog to Japan's Building Standards Act Art.12 -- building/equipment periodic inspection is set by state/local Authority Having Jurisdiction (AHJ) codes, not surveyed here."
+          :permit-basis "International Building Code (IBC) §105 Permits (F105.1: permit required before construction/enlargement/alteration) -- ICC model code adopted, with amendments, as state/local law by the Authority Having Jurisdiction"
+          :permit-provenance "https://codes.iccsafe.org/s/IBC2021P1/chapter-1-scope-and-administration/IBC2021P1-Ch01-Sec105"
+          :permit-note "The IBC is a model code published by the International Code Council (ICC), not federal statute; it becomes law only via state/local AHJ adoption. No federal US building-permit statute is fabricated here -- the IBC is the de facto national regime, cited honestly as the model-code basis it is."
+          :completion-inspection-basis "International Building Code (IBC) §111 Certificate of Occupancy (a CO is issued only after a passed final inspection confirms code compliance; a building may not be occupied or handed over without it)"
+          :completion-inspection-provenance "https://codes.iccsafe.org/s/IBC2021P1/chapter-1-scope-and-administration/IBC2021P1-Ch01-Sec111"}
    "DEU" {:name "Germany (EU jurisdiction proxy, see ns docstring)"
           :owner-authority "Bundesministerium für Arbeit und Soziales (BMAS) / Berufsgenossenschaft der Bauwirtschaft (BG BAU); EU level: European Agency for Safety and Health at Work (EU-OSHA)"
           :legal-basis "Baustellenverordnung (BaustellV, transposing Council Directive 92/57/EEC) / Arbeitsschutzgesetz (ArbSchG, transposing Framework Directive 89/391/EEC Art.5 general risk-assessment duty)"
@@ -99,7 +121,12 @@
           :accident-report-basis "Framework Directive 89/391/EEC Art.9(1)(c) (employer must record and report occupational accidents to the competent authority; nationally transposed, e.g. German SGB VII / DGUV Unfallanzeige)"
           :accident-report-provenance "https://en.wikipedia.org/wiki/Directive_89/391/EEC"
           :periodic-report-basis "Directive 92/57/EEC health & safety plan obligations (BaustellV §2-§3); no single EU-wide numeric periodic-report analog to Japan's Building Standards Act Art.12"
-          :periodic-report-provenance "https://osha.europa.eu/en/legislation/directives/15"}})
+          :periodic-report-provenance "https://osha.europa.eu/en/legislation/directives/15"
+          :permit-basis "Landesbauordnung (state building code, e.g. Musterbauordnung MBO §68 ff.) -- Baugenehmigung (building permit) required before construction; building law is Länder (state) competence, not federal"
+          :permit-provenance "https://www.dibt.de/en"
+          :permit-note "German building permits/inspections are governed by the state Landesbauordnungen (MBO as the ARGEBAU model), not federal law -- the same honest state-vs-federal layering as the labor-safety entries above. DIBt (Deutsches Institut für Bautechnik) is cited as the central building-authority reference."
+          :completion-inspection-basis "Landesbauordnung Abnahme (acceptance/final inspection of the completed structure) + EU Construction Products Regulation (EU) No 305/2011 (CE marking / Declaration of Performance for construction products placed on the EU market)"
+          :completion-inspection-provenance "https://eur-lex.europa.eu/legal-content/EN/ALL/?uri=CELEX:32011R0305"}})
 
 (defn spec-basis
   "The jurisdiction's requirement map, or nil -- nil means NO spec-basis,

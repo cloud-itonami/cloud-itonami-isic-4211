@@ -1,12 +1,17 @@
 # Operator Guide
 
-> **Implementation status**: the disaster/severe-weather safety slice
-> of this guide (weather assessment, mandatory post-event inspection,
-> mail+phone alert dispatch, work-resume authorization, accident/
-> periodic report filing) is implemented in `src/construction` -- see
-> the README's "Implemented slice" section and `docs/adr/0001-
-> architecture.md`. The robot-dispatch example below (Day in the life)
-> is not yet implemented.
+> **Implementation status**: BOTH slices of this guide are implemented
+> in `src/construction`. The disaster/severe-weather safety slice
+> (weather assessment, mandatory post-event inspection, mail+phone
+> alert dispatch, work-resume authorization, accident/periodic report
+> filing) -- see `docs/adr/0001-architecture.md`. AND the robot-
+> dispatch (build) Day-in-the-life example below is now real code:
+> `:build/dispatch-placement` (the robot panel-placement dispatch) and
+> `:handover/complete` (the structure handover), each gated by the
+> genuinely-new `permit-and-inspection-required` governor HARD check
+> (an issued building permit + a passed completion inspection) -- see
+> `docs/adr/0002-robot-dispatch-slice.md`. The blueprint is
+> `:implemented`.
 
 ## First Deployment
 1. Register operator, sites, assets, personnel and robots.
@@ -29,6 +34,15 @@ records and human review for safety-affecting actions.
 intake : design : permit : build : inspect : handover : audit
 
 ## Day in the life: an exterior envelope panel phase
+
+> **Now implemented.** This walkthrough's `propose → approve → execute → audit`
+> loop for the panel placement is backed by the `:build/dispatch-placement` op
+> (the robot dispatch) and `:handover/complete` (the structure handover), both
+> gated by the `:construction-governor`'s `permit-and-inspection-required` HARD
+> check (issued building permit + passed completion inspection). Run
+> `clojure -M:dev:run` to see the site-4 (田中ビル外壁改修) episode execute
+> end-to-end, including the no-permit / no-completion-inspection / double-
+> placement / double-handover HARD holds. See `docs/adr/0002-robot-dispatch-slice.md`.
 
 This walks the `intake → propose → approve → execute → audit` loop for one concrete unit of
 work in this business — a community housing project's `4211` scope covers structural and

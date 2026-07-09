@@ -13,14 +13,30 @@
                           :path "public/games/itonami/building-site"
                           :url "https://isekai.network/itonami/building-site"
                           :adr "ADR-2607031000"}
- :itonami.blueprint/maturity :partially-implemented
+ :itonami.blueprint/maturity :implemented
  :itonami.blueprint/implemented-slice
- "disaster/severe-weather safety: `src/construction` -- Construction
- Advisor (LLM proposal-only) ⊣ Construction Governor (legal-basis/
- threshold/inspection/report hard-gates), per-jurisdiction legal-basis
- catalog (JPN/USA/DEU, `construction.facts`) with real official
- sources, and mail+phone (Resend+Twilio) alert dispatch
- (`construction.notify`). Physical robot-dispatch ops described in
- `docs/operator-guide.md`'s Day-in-the-life example (panel placement
- etc.) are NOT part of this slice -- separate follow-up, same governor
- pattern."}
+ "BOTH slices of `:construction-governor` are implemented end-to-end
+ in `src/construction`. (1) disaster/severe-weather SAFETY slice --
+ Construction Advisor (LLM proposal-only) ⊣ Construction Governor
+ (legal-basis/threshold/inspection/report hard-gates), per-jurisdiction
+ legal-basis catalog (JPN/USA/DEU, `construction.facts`) with real
+ official sources, and mail+phone (Resend+Twilio) alert dispatch
+ (`construction.notify`); four actuation ops (`:actuation/dispatch-
+ alert` / `:authorize-resume` / `:file-accident-report` / `:file-
+ periodic-report`). (2) physical ROBOT-DISPATCH (build) slice -- the
+ Operator Guide's Day-in-the-life exterior-envelope-panel example is
+ now real code: `:build/dispatch-placement` (a construction robot
+ physically places a building element) and `:handover/complete` (hand
+ over the completed, inspected structure), each with its own
+ double-actuation-guard boolean (`:placement-dispatched?` /
+ `:handed-over?`) on the same `site` entity. The genuinely-new
+ governor HARD check `permit-and-inspection-required` gates both:
+ a placement requires an ISSUED BUILDING PERMIT on file, and a
+ handover requires the permit AND a PASSED COMPLETION INSPECTION --
+ grounded in 建築基準法 第6条（建築確認）/ 第7条（完了検査）, IBC
+ §105（permit）/ §111（certificate of occupancy + final inspection）,
+ and Landesbauordnung Baugenehmigung / Abnahme + EU Construction
+ Products Regulation 305/2011 (cited per-jurisdiction in
+ `construction.facts`, grep-verified UNIQUE fleet-wide). See
+ `docs/adr/0001-architecture.md` (safety slice) and
+ `docs/adr/0002-robot-dispatch-slice.md` (build slice)."}
