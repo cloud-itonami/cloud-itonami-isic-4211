@@ -48,20 +48,18 @@ Resolves via [`kotoba-lang/industry`](https://github.com/kotoba-lang/industry)
 See [`docs/business-model.md`](docs/business-model.md) and
 [`docs/operator-guide.md`](docs/operator-guide.md).
 
-## Implemented slice: disaster / severe-weather safety (`src/construction`)
+## Implemented slices (`src/construction`)
 
-`blueprint.edn` names the governor `:construction-governor`. This repo
-implements ONE vertical slice of it end-to-end -- **Construction
-Advisor ⊣ Construction Governor** for typhoon/severe-weather safety at
-a site, following the SAME `.cljc` actor pattern (langgraph-clj
-StateGraph, mock-by-default advisor, dual MemStore/Datomic backend,
-0→3 phase rollout) every prior `cloud-itonami-isic-*` actor in this
-fleet uses (see e.g.
+`blueprint.edn` names the governor `:construction-governor` and is now
+`:implemented`. This repo implements BOTH vertical slices of that
+governor end-to-end -- **Construction Advisor ⊣ Construction Governor**
+-- following the SAME `.cljc` actor pattern (langgraph-clj StateGraph,
+mock-by-default advisor, dual MemStore/Datomic backend, 0→3 phase
+rollout) every prior `cloud-itonami-isic-*` actor in this fleet uses
+(see e.g.
 [`cloud-itonami-isic-3030`](https://github.com/cloud-itonami/cloud-itonami-isic-3030)).
-Physical robot-dispatch ops (panel placement etc., see the Operator
-Guide's Day-in-the-life example) are a SEPARATE, not-yet-implemented
-slice of the same governor -- see `blueprint.edn`
-`:itonami.blueprint/implemented-slice`.
+
+### Slice 1 — disaster / severe-weather safety
 
 | Ask | Implementation |
 |---|---|
@@ -71,44 +69,60 @@ slice of the same governor -- see `blueprint.edn`
 | 共有 (sharing) | `construction.notify/dispatch-alert!` fans the alert out to every contact in a site's `:worker-contacts` roster, mail AND phone, with per-contact/per-channel failure isolation |
 | 報告書作成 (report generation) | `:actuation/file-accident-report` / `:actuation/file-periodic-report` -- `construction.registry/render-accident-report` / `render-periodic-report` produce the actual document text, citing the jurisdiction's legal basis inline |
 
+### Slice 2 — physical robot-dispatch (build)
+
+The Operator Guide's Day-in-the-life exterior-envelope-panel example is
+now real code. Two physical actuation ops on the same `site` entity:
+
+| Ask | Implementation |
+|---|---|
+| 施工 (build / robot placement) | `:build/dispatch-placement` -- a construction robot physically places a building element (panel @ wall by robot, read off the site's `:build-target`). Governor check 8 HARD-requires an ISSUED BUILDING PERMIT on file before this can ever commit |
+| 引渡し (handover) | `:handover/complete` -- hand over the completed, inspected structure. Governor check 8 ADDITIONALLY HARD-requires a PASSED COMPLETION INSPECTION on file. `construction.registry/render-handover-certificate` produces the completion certificate, citing the jurisdiction's completion-inspection basis inline |
+
 **Legal basis is data, not code** -- `src/construction/facts.cljc`'s
 `catalog` is the per-jurisdiction EDN source-of-truth the governor
 checks every proposal against (JPN/USA/DEU seeded; DEU stands in for
 the EU, the same convention `aerospace.facts` uses for EASA):
 
-| Jurisdiction | Legal basis | Source |
+| Jurisdiction | Safety-slice legal basis | Build-slice legal basis |
 |---|---|---|
-| 🇯🇵 Japan | 労働安全衛生規則 第522条（悪天候時の作業中止）・第655条（悪天候後の点検義務）・第97条（労働者死傷病報告）／建築基準法 第12条（定期報告） | [e-Gov 労働安全衛生規則](https://laws.e-gov.go.jp/law/347M50002000032) / [国土交通省 定期報告制度](https://www.mlit.go.jp/jutakukentiku/build/jutakukentiku_house_tk_000039.html) |
-| 🇺🇸 USA | OSH Act §5(a)(1) General Duty Clause / 29 CFR 1926.20 / 29 CFR 1904 | [OSHA 1926.20](https://www.osha.gov/laws-regs/regulations/standardnumber/1926/1926.20) / [OSHA Recordkeeping](https://www.osha.gov/recordkeeping) |
-| 🇪🇺 EU (DEU proxy) | Framework Directive 89/391/EEC / Construction Sites Directive 92/57/EEC / Baustellenverordnung | [EUR-Lex 92/57/EEC](https://eur-lex.europa.eu/legal-content/EN/ALL/?uri=celex:31992L0057) / [EU-OSHA](https://osha.europa.eu/en/legislation/directives/15) |
+| 🇯🇵 Japan | 労働安全衛生規則 第522条・第655条・第97条 ／建築基準法 第12条 | 建築基準法 第6条（建築確認）・第7条（完了検査） — [e-Gov 建築基準法](https://laws.e-gov.go.jp/law/325AC0000000201) |
+| 🇺🇸 USA | OSH Act §5(a)(1) / 29 CFR 1926.20 / 29 CFR 1904 | IBC §105（Permits）・§111（Certificate of Occupancy）— [ICC IBC 2021](https://codes.iccsafe.org/s/IBC2021P1/chapter-1-scope-and-administration/IBC2021P1-Ch01-Sec105) (model code, honestly labeled) |
+| 🇪🇺 EU (DEU proxy) | Framework Directive 89/391/EEC / Construction Sites Directive 92/57/EEC / Baustellenverordnung | Landesbauordnung Baugenehmigung・Abnahme + EU Construction Products Regulation 305/2011 — [EUR-Lex 305/2011](https://eur-lex.europa.eu/legal-content/EN/ALL/?uri=CELEX:32011R0305) |
 
 Japan has a real numeric trigger (10 m/s wind / 50 mm rain / 25 cm
 snow, per 10-min/event); the USA and EU deliberately do NOT --
 `construction.facts/weather-threshold-exceeded?` reports `:qualitative`
 there rather than fabricating a number, and the Construction Governor
 routes those jurisdictions' work-resume decision to a human safety
-officer every time instead of a hard numeric rule. See
-`construction.facts` ns docstring for the full honesty discipline and
-`construction.governor` for how each check maps to a specific legal
-citation.
+officer every time instead of a hard numeric rule. The build-slice
+permit+inspection regime is honestly per-jurisdiction too: the USA's
+IBC is cited as the ICC model code it is (not federal statute) and
+Germany's BauO is cited as the state law it is (layered with the EU
+CPR). See `construction.facts` ns docstring for the full honesty
+discipline and `construction.governor` for how each check maps to a
+specific legal citation.
 
-**Actuation.** Four real-world acts this actor performs each get their
+**Actuation.** Six real-world acts this actor performs each get their
 own governor hard-gates + double-actuation guard:
 `:actuation/dispatch-alert` (mail+phone warning),
 `:actuation/authorize-resume` (work-resume authorization),
 `:actuation/file-accident-report`, `:actuation/file-periodic-report`
-(legal report filings). `:actuation/dispatch-alert` is the ONE
-deliberate exception to this fleet's "actuation always needs a human"
-norm -- it MAY auto-commit at phase 3 when the governor is clean
-(a real legal-basis citation on file AND a human-approved `:stop-work`
-weather assessment already committed), because for a disaster warning
-dispatch SPEED is itself the safety property. The other three never
-auto-commit at any phase -- see `construction.phase` ns docstring
-'Actuation' section and `construction.governor` checks 2/7.
+(legal report filings), `:build/dispatch-placement` (robot placement)
+and `:handover/complete` (structure handover). `:actuation/dispatch-
+alert` is the ONE deliberate exception to this fleet's "actuation
+always needs a human" norm -- it MAY auto-commit at phase 3 when the
+governor is clean (a real legal-basis citation on file AND a
+human-approved `:stop-work` weather assessment already committed),
+because for a disaster warning dispatch SPEED is itself the safety
+property. The other five never auto-commit at any phase -- see
+`construction.phase` ns docstring 'Actuation' section,
+`construction.governor` checks 2/7/8, and `docs/adr/0002-robot-dispatch-
+slice.md` for the build-slice decisions.
 
 ```bash
-clojure -M:dev:run    # demo: full typhoon episode + every HARD hold
-clojure -M:dev:test   # 59 tests / 238 assertions
+clojure -M:dev:run    # demo: full typhoon episode + robot-dispatch build slice + every HARD hold
+clojure -M:dev:test   # 78 tests / 344 assertions
 clojure -M:lint       # clj-kondo, errors fail
 ```
 

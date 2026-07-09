@@ -14,15 +14,17 @@
 
   ## Actuation
 
-  `:actuation/authorize-resume`, `:actuation/file-accident-report` and
-  `:actuation/file-periodic-report` are deliberately ABSENT from every
-  phase's `:auto` set, including phase 3 -- a permanent structural
-  fact, not a rollout milestone still to come. Authorizing work to
-  resume after a disaster hold and filing a real legal report are
-  real-world acts this actor performs; both are always a human safety
-  officer's call. `construction.governor`'s high-stakes gate enforces
-  the same invariant independently -- two layers, not one, agree on
-  this.
+  `:actuation/authorize-resume`, `:actuation/file-accident-report`,
+  `:actuation/file-periodic-report`, `:build/dispatch-placement` and
+  `:handover/complete` are deliberately ABSENT from every phase's
+  `:auto` set, including phase 3 -- a permanent structural fact, not a
+  rollout milestone still to come. Authorizing work to resume after a
+  disaster hold, filing a real legal report, dispatching a robot to
+  physically place a building element, and handing over a completed
+  structure are real-world acts this actor performs; all four are
+  always a human safety officer's call. `construction.governor`'s
+  high-stakes gate enforces the same invariant independently -- two
+  layers, not one, agree on this.
 
   `:actuation/dispatch-alert` is the ONE actuation op that IS a member
   of phase 3's `:auto` set -- a deliberate, reasoned exception to the
@@ -48,14 +50,19 @@
 (def read-ops  #{})
 (def write-ops #{:site/intake :weather/assess :inspection/screen
                  :actuation/dispatch-alert :actuation/authorize-resume
-                 :actuation/file-accident-report :actuation/file-periodic-report})
+                 :actuation/file-accident-report :actuation/file-periodic-report
+                 :build/dispatch-placement :handover/complete})
 
 ;; NOTE the invariant: `:actuation/authorize-resume`/`:actuation/file-
-;; accident-report`/`:actuation/file-periodic-report` are members of
-;; `write-ops` (governor-gated like any write) but are NEVER members of
-;; any phase's `:auto` set below. Do not add them there.
-;; `:actuation/dispatch-alert` IS a deliberate exception -- see ns
-;; docstring 'Actuation' section above before changing this.
+;; accident-report`/`:actuation/file-periodic-report`/`:build/dispatch-
+;; placement`/`:handover/complete` are members of `write-ops`
+;; (governor-gated like any write) but are NEVER members of any phase's
+;; `:auto` set below. Do not add them there -- dispatching a robot to
+;; physically place a building element and handing over a completed
+;; structure are real physical acts that ALWAYS need a human safety
+;; officer, exactly like authorizing work-resume or filing a legal
+;; report. `:actuation/dispatch-alert` IS the one deliberate exception
+;; -- see ns docstring 'Actuation' section above before changing this.
 (def phases
   "phase -> {:label .. :writes <ops allowed to write> :auto <ops allowed to
   auto-commit when governor-clean>}."
@@ -76,10 +83,11 @@
   - a write op enabled but not auto-eligible -> ESCALATE (:phase-approval),
     even if the governor was clean.
   - `:actuation/authorize-resume`/`:actuation/file-accident-report`/
-    `:actuation/file-periodic-report` are never auto-eligible at any
-    phase, so they always escalate once the governor clears them (or
-    hold if the governor doesn't). `:actuation/dispatch-alert` MAY
-    auto-commit at phase 3 -- see ns docstring."
+    `:actuation/file-periodic-report`/`:build/dispatch-placement`/
+    `:handover/complete` are never auto-eligible at any phase, so they
+    always escalate once the governor clears them (or hold if the
+    governor doesn't). `:actuation/dispatch-alert` MAY auto-commit at
+    phase 3 -- see ns docstring."
   [phase {:keys [op]} governor-disposition]
   (let [{:keys [writes auto]} (get phases phase (get phases default-phase))]
     (cond
