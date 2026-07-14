@@ -13,8 +13,28 @@
   for a site with no injury, a double alert-dispatch, a double
   resume-authorization) that never reach a human at all, then a
   qualitative-jurisdiction (USA) walkthrough showing no threshold is
-  ever fabricated there, and finally prints the audit ledger + the
-  draft records + the rendered report documents."
+  ever fabricated there.
+
+  THEN the ROBOT-DISPATCH (build) slice on site-4 (田中ビル外墙改修,
+  exterior-wall renovation -- the Operator Guide's exterior-envelope-
+  panel Day-in-the-life example): the permit/design record is
+  registered via intake (auto-commits) -> a panel-placement dispatch
+  attempted BEFORE the robot pre-placement verification mission ever
+  ran (HARD hold, robotics-simulation-missing) -> the robot mission
+  runs (rebar-placement scan / total-station as-built survey /
+  concrete-cure test-cylinder press; human approves) -> the robot
+  panel-placement is dispatched (human approves -- a physical act,
+  never auto) -> the completion inspection is recorded via intake
+  (auto-commits) -> the structure is handed over (human approves,
+  handover certificate rendered) -> site-6 (robot pre-placement
+  mission already on file, but its own as-built-deviation
+  independently rechecks out-of-tolerance -> HARD hold, robotics-
+  simulation-out-of-tolerance, never trusting the on-file verdict
+  alone) -> a USA (IBC §105/§111) build walkthrough -> then four more
+  HARD holds (a placement with NO permit on file, a handover with no
+  permit+completion-inspection, a double placement, a double handover)
+  that never reach a human. Finally prints the audit ledger + the
+  draft records + the rendered report/certificate documents."
   (:require [langgraph.graph :as g]
             [construction.store :as store]
             [construction.notify :as notify]
@@ -103,6 +123,57 @@
       (println r)
       (println (approve! actor "t18")))
 
+    (println)
+    (println "== ROBOT-DISPATCH (build) slice -- site-4 (田中ビル外墙改修, exterior-wall renovation) ==")
+    (println "== site/intake site-4: permit/design record registered (建築確認 issued) (auto-commits) ==")
+    (println (exec! actor "t19" {:op :site/intake :subject "site-4"
+                                 :patch {:id "site-4" :permit-issued? true :status :permit}} operator))
+
+    (println "== build/dispatch-placement site-4 before robot pre-placement verification mission ran -> HARD hold (robotics-simulation-missing) ==")
+    (println (exec! actor "t19b" {:op :build/dispatch-placement :subject "site-4"} operator))
+
+    (println "== robotics/simulate-placement-verification site-4 (robot rebar-scan/total-station survey/test-cylinder press mission; escalates -- human approves) ==")
+    (println (exec! actor "t19c" {:op :robotics/simulate-placement-verification :subject "site-4"} operator))
+    (println (approve! actor "t19c"))
+
+    (println "== build/dispatch-placement site-4 (robot places exterior-envelope-panel @ north-wall-unit-4; escalates -- human approves, a physical act never auto) ==")
+    (let [r (exec! actor "t20" {:op :build/dispatch-placement :subject "site-4"} operator)]
+      (println r)
+      (println "-- human safety officer approves the robot placement dispatch --")
+      (println (approve! actor "t20")))
+
+    (println "== site/intake site-4: completion inspection passed (完了検査/IBC §111 final inspection) (auto-commits) ==")
+    (println (exec! actor "t21" {:op :site/intake :subject "site-4"
+                                 :patch {:id "site-4" :build-inspection-passed? true :status :inspect}} operator))
+
+    (println "== handover/complete site-4 (escalates -- human approves, handover certificate rendered) ==")
+    (let [r (exec! actor "t22" {:op :handover/complete :subject "site-4"} operator)]
+      (println r)
+      (println "-- human safety officer approves the structure handover --")
+      (println (approve! actor "t22")))
+
+    (println "== build/dispatch-placement site-6 (robot pre-placement mission on file, but as-built-deviation independently rechecks out-of-tolerance -> HARD hold, robotics-simulation-out-of-tolerance, never trusting the on-file verdict alone) ==")
+    (println (exec! actor "t22b" {:op :build/dispatch-placement :subject "site-6"} operator))
+
+    (println "== USA (IBC §105/§111) build walkthrough -- site-5 permit + completion inspection recorded, then handed over ==")
+    (println (exec! actor "t23" {:op :site/intake :subject "site-5"
+                                 :patch {:id "site-5" :permit-issued? true :build-inspection-passed? true}} operator))
+    (let [r (exec! actor "t24" {:op :handover/complete :subject "site-5"} operator)]
+      (println r)
+      (println (approve! actor "t24")))
+
+    (println "== build/dispatch-placement site-1 (JPN, NO permit on file -> HARD hold, never reaches a human) ==")
+    (println (exec! actor "t25" {:op :build/dispatch-placement :subject "site-1"} operator))
+
+    (println "== handover/complete site-1 (NO permit AND NO completion inspection -> HARD hold with BOTH violations) ==")
+    (println (exec! actor "t26" {:op :handover/complete :subject "site-1"} operator))
+
+    (println "== build/dispatch-placement site-4 AGAIN (double-placement -> HARD hold) ==")
+    (println (exec! actor "t27" {:op :build/dispatch-placement :subject "site-4"} operator))
+
+    (println "== handover/complete site-4 AGAIN (double-handover -> HARD hold) ==")
+    (println (exec! actor "t28" {:op :handover/complete :subject "site-4"} operator))
+
     (println "== audit ledger ==")
     (doseq [f (store/ledger db)] (println f))
 
@@ -116,4 +187,13 @@
     (doseq [r (store/accident-report-history db)] (println (get r "document")))
 
     (println "== periodic-report document (site-1) ==")
-    (doseq [r (store/periodic-report-history db)] (println (get r "document")))))
+    (doseq [r (store/periodic-report-history db)] (println (get r "document")))
+
+    (println "== draft placement-dispatch records ==")
+    (doseq [r (store/placement-history db)] (println r))
+
+    (println "== draft handover-completion records ==")
+    (doseq [r (store/handover-history db)] (println r))
+
+    (println "== handover-certificate document (site-4) ==")
+    (doseq [r (store/handover-history db)] (println (get r "document")))))

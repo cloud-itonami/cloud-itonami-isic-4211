@@ -15,7 +15,8 @@
   (:require [clojure.test :refer [deftest is testing]]
             [langgraph.graph :as g]
             [construction.store :as store]
-            [construction.operation :as op]))
+            [construction.operation :as op]
+            [construction.phase :as phase]))
 
 (defn- fresh []
   (let [db (store/seed-db)]
@@ -204,6 +205,140 @@
       (let [r2 (approve! actor "t17")]
         (is (= :commit (get-in r2 [:state :disposition])))
         (is (true? (:work-resumed? (store/site db "site-5"))))))))
+
+;; ----------------------------- robot-dispatch (build/handover) slice -----------------------------
+
+(defn- permit!
+  "Record an ISSUED BUILDING PERMIT on `subject` via an intake patch
+  (auto-commits). Mirrors how the safety slice sets `:injury-occurred?`."
+  [actor tid-prefix subject]
+  (exec-op actor (str tid-prefix "-permit") {:op :site/intake :subject subject
+                                             :patch {:id subject :permit-issued? true}} operator))
+
+(defn- build-inspection-passed!
+  "Record a PASSED COMPLETION INSPECTION on `subject` via an intake patch
+  (auto-commits)."
+  [actor tid-prefix subject]
+  (exec-op actor (str tid-prefix "-insp") {:op :site/intake :subject subject
+                                           :patch {:id subject :build-inspection-passed? true}} operator))
+
+(defn- simulate-robotics!
+  "Walks `subject` through the robot pre-placement verification
+  mission -> approve, leaving `:robotics-sim-verified?` on file. Only
+  meaningful to call for a site whose as-built-deviation is actually
+  within tolerance -- an out-of-tolerance site still gets
+  `:robotics-sim-verified?` recorded (per whatever the mission itself
+  found), but `construction.governor`'s independent recheck HARD-holds
+  regardless (see `robotics-simulation-out-of-tolerance-is-held`)."
+  [actor tid-prefix subject]
+  (exec-op actor (str tid-prefix "-robotics") {:op :robotics/simulate-placement-verification :subject subject} operator)
+  (approve! actor (str tid-prefix "-robotics")))
+
+(deftest placement-without-permit-is-held
+  (testing "site-1 has no building permit on file -> HARD hold, the physical dispatch never reaches a human"
+    (let [[db actor] (fresh)
+          res (exec-op actor "b1" {:op :build/dispatch-placement :subject "site-1"} operator)]
+      (is (= :hold (get-in res [:state :disposition])))
+      (is (some #{:permit-not-issued} (-> (store/ledger db) first :basis)))
+      (is (false? (:placement-dispatched? (store/site db "site-1")))))))
+
+(deftest handover-without-permit-and-inspection-is-held-with-both-violations
+  (testing "site-1 has neither permit nor a passed completion inspection -> HARD hold reporting BOTH violations"
+    (let [[db actor] (fresh)
+          res (exec-op actor "b2" {:op :handover/complete :subject "site-1"} operator)]
+      (is (= :hold (get-in res [:state :disposition])))
+      (is (some #{:permit-not-issued} (-> (store/ledger db) first :basis)))
+      (is (some #{:completion-inspection-not-passed} (-> (store/ledger db) first :basis)))
+      (is (false? (:handed-over? (store/site db "site-1")))))))
+
+(deftest handover-with-permit-but-no-completion-inspection-is-held
+  (testing "a permit alone is not enough for handover -- a passed completion inspection is separately required"
+    (let [[db actor] (fresh)
+          _ (permit! actor "b3pre" "site-1")
+          res (exec-op actor "b3" {:op :handover/complete :subject "site-1"} operator)]
+      (is (= :hold (get-in res [:state :disposition])))
+      (is (some #{:completion-inspection-not-passed} (-> (store/ledger db) last :basis)))
+      (is (not (some #{:permit-not-issued} (-> (store/ledger db) last :basis))) "permit IS on file -- not the violation here"))))
+
+(deftest placement-always-escalates-then-human-decides
+  (testing "a permitted, robotics-simulated site's panel-placement STILL ALWAYS interrupts for human approval -- a physical act, never auto"
+    (let [[db actor] (fresh)
+          _ (permit! actor "b4pre" "site-1")
+          _ (simulate-robotics! actor "b4pre2" "site-1")
+          r1 (exec-op actor "b4" {:op :build/dispatch-placement :subject "site-1"} operator)]
+      (is (= :interrupted (:status r1)) "pauses for human approval even when governor-clean")
+      (let [r2 (approve! actor "b4")]
+        (is (= :commit (get-in r2 [:state :disposition])))
+        (is (true? (:placement-dispatched? (store/site db "site-1"))))
+        (is (= "JPN-PLC-000000" (get (first (store/placement-history db)) "record_id")))
+        (is (= 1 (count (store/placement-history db))))))))
+
+(deftest handover-always-escalates-then-human-decides
+  (testing "a permitted + completion-inspected site's handover STILL ALWAYS interrupts for human approval"
+    (let [[db actor] (fresh)
+          _ (permit! actor "b5pre" "site-1")
+          _ (build-inspection-passed! actor "b5pre" "site-1")
+          r1 (exec-op actor "b5" {:op :handover/complete :subject "site-1"} operator)]
+      (is (= :interrupted (:status r1)))
+      (let [r2 (approve! actor "b5")]
+        (is (= :commit (get-in r2 [:state :disposition])))
+        (is (true? (:handed-over? (store/site db "site-1"))))
+        (is (some? (get (first (store/handover-history db)) "document")) "rendered handover certificate present")
+        (is (= "JPN-HDO-000000" (get (first (store/handover-history db)) "record_id")))))))
+
+(deftest double-placement-is-held
+  (let [[db actor] (fresh)
+        _ (permit! actor "b6pre" "site-1")
+        _ (simulate-robotics! actor "b6pre2" "site-1")
+        _ (exec-op actor "b6a" {:op :build/dispatch-placement :subject "site-1"} operator)
+        _ (approve! actor "b6a")
+        res (exec-op actor "b6" {:op :build/dispatch-placement :subject "site-1"} operator)]
+    (is (= :hold (get-in res [:state :disposition])))
+    (is (some #{:already-placement-dispatched} (-> (store/ledger db) last :basis)))
+    (is (= 1 (count (store/placement-history db))))))
+
+(deftest double-handover-is-held
+  (let [[db actor] (fresh)
+        _ (permit! actor "b7pre" "site-1")
+        _ (build-inspection-passed! actor "b7pre" "site-1")
+        _ (exec-op actor "b7a" {:op :handover/complete :subject "site-1"} operator)
+        _ (approve! actor "b7a")
+        res (exec-op actor "b7" {:op :handover/complete :subject "site-1"} operator)]
+    (is (= :hold (get-in res [:state :disposition])))
+    (is (some #{:already-handed-over} (-> (store/ledger db) last :basis)))
+    (is (= 1 (count (store/handover-history db))))))
+
+(deftest robotics-simulation-always-needs-approval
+  (testing "robotics/simulate-placement-verification is never in any phase's :auto set -- always human approval, even when clean"
+    (let [[db actor] (fresh)
+          res (exec-op actor "b8" {:op :robotics/simulate-placement-verification :subject "site-1"} operator)]
+      (is (= :interrupted (:status res)))
+      (let [r2 (approve! actor "b8")]
+        (is (= :commit (get-in r2 [:state :disposition])))
+        (is (true? (:robotics-sim-verified? (store/site db "site-1"))))))))
+
+(deftest dispatch-placement-without-robotics-simulation-is-held
+  (testing "build/dispatch-placement before the robot pre-placement verification mission ever ran -> HOLD (robotics-simulation-missing)"
+    (let [[db actor] (fresh)
+          _ (permit! actor "b9pre" "site-1")
+          res (exec-op actor "b9" {:op :build/dispatch-placement :subject "site-1"} operator)]
+      (is (= :hold (get-in res [:state :disposition])))
+      (is (some #{:robotics-simulation-missing} (-> (store/ledger db) last :basis)))
+      (is (empty? (store/placement-history db))))))
+
+(deftest robotics-simulation-out-of-tolerance-is-held
+  (testing "site-6 has a robotics-sim already on file (and a permit), but its own as-built-deviation reading falls outside its own tolerance bounds on INDEPENDENT recheck -> HOLD, never trusts the on-file verdict alone"
+    (let [[db actor] (fresh)
+          res (exec-op actor "b10" {:op :build/dispatch-placement :subject "site-6"} operator)]
+      (is (= :hold (get-in res [:state :disposition])))
+      (is (some #{:robotics-simulation-out-of-tolerance} (-> (store/ledger db) last :basis)))
+      (is (empty? (store/placement-history db))))))
+
+(deftest placement-and-handover-never-auto-at-any-phase
+  (testing "structural invariant: a physical placement / handover is never auto-eligible at any phase, even when clean"
+    (doseq [op [:build/dispatch-placement :handover/complete]]
+      (is (= :escalate (:disposition (phase/gate 3 {:op op} :commit)))
+          (str op " must escalate to a human even when the governor is clean at phase 3")))))
 
 (deftest every-decision-leaves-one-ledger-fact
   (testing "write-only-through-ledger: N operations -> N ledger facts"

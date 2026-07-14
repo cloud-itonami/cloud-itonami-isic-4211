@@ -40,3 +40,29 @@
 (deftest inspection-checklist-is-empty-for-uncovered-jurisdiction
   (is (seq (facts/inspection-checklist "JPN")))
   (is (= [] (facts/inspection-checklist "ATL"))))
+
+;; ----------------------------- building-code (permit + completion-inspection) basis -----------------------------
+
+(deftest jpn-has-a-building-permit-and-completion-inspection-basis
+  (let [sb (facts/spec-basis "JPN")]
+    (is (re-find #"建築基準法 第6条" (:permit-basis sb)) "permit basis cites 建築確認 (Art.6)")
+    (is (re-find #"建築基準法 第7条" (:completion-inspection-basis sb)) "completion-inspection basis cites 完了検査 (Art.7)")
+    (is (re-find #"laws\.e-gov\.go\.jp" (:permit-provenance sb)))))
+
+(deftest usa-building-code-cited-honestly-as-ibc-model-code
+  (let [sb (facts/spec-basis "USA")]
+    (is (re-find #"IBC\) §105" (:permit-basis sb)))
+    (is (re-find #"IBC\) §111" (:completion-inspection-basis sb)))
+    (is (re-find #"iccsafe\.org" (:permit-provenance sb)))
+    (is (re-find #"model code" (:permit-note sb)) "honestly labeled a model code, not federal statute")))
+
+(deftest deu-building-code-cites-bauo-and-eu-cpr
+  (let [sb (facts/spec-basis "DEU")]
+    (is (re-find #"Baugenehmigung" (:permit-basis sb)))
+    (is (re-find #"Abnahme" (:completion-inspection-basis sb)))
+    (is (re-find #"305/2011" (:completion-inspection-basis sb)) "EU Construction Products Regulation cited for product CE marking")
+    (is (re-find #"eur-lex\.europa\.eu" (:completion-inspection-provenance sb)))))
+
+(deftest uncovered-jurisdiction-has-no-fabricated-building-code-basis
+  (let [sb (facts/spec-basis "ATL")]
+    (is (nil? sb) "no spec-basis at all -> no fabricated permit/inspection basis")))

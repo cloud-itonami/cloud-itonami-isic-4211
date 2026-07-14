@@ -12,14 +12,17 @@
   to HOLD -- the construction-safety analog of `cloud-itonami-isic-
   3030`'s Aerospace Manufacturing Governor.
 
-  Seven checks, in priority order, ALL HARD violations: a human
+  Nine checks, in priority order, ALL HARD violations: a human
   approver CANNOT override them (you don't get to approve your way
   past a fabricated jurisdiction spec-basis, a disaster alert with no
   human-approved weather determination behind it, a site still
   measurably over its own legal weather threshold, an incomplete/
-  unresolved mandatory inspection, or a double dispatch/authorization/
-  report filing). The confidence/high-stakes gate is SOFT: it asks a
-  human to look, and the human may approve.
+  unresolved mandatory inspection, a build/handover with no building-
+  code permit/inspection on file, a robot placement-verification
+  mission that never ran or that independently re-checks out-of-
+  tolerance, or a double dispatch/authorization/report/placement/
+  handover). The confidence/high-stakes gate is SOFT: it asks a human
+  to look, and the human may approve.
 
     1. Legal-basis missing       -- did the `:weather/assess`/actuation
                                      proposal cite an OFFICIAL source
@@ -99,8 +102,10 @@
                                      the op is `:actuation/authorize-
                                      resume`/`:actuation/file-accident-
                                      report`/`:actuation/file-periodic-
-                                     report` (REAL legal/safety-critical
-                                     acts) -> escalate to a human.
+                                     report`/`:build/dispatch-placement`/
+                                     `:handover/complete` (REAL legal/
+                                     safety-critical / physical acts) ->
+                                     escalate to a human.
                                      `:actuation/dispatch-alert` is
                                      DELIBERATELY EXCLUDED from this
                                      set -- see `construction.phase` ns
@@ -110,16 +115,73 @@
                                      auto-commit when the governor is
                                      clean.
 
-  Four more guards, double-dispatch/double-authorization/double-report
-  prevention, are enforced but NOT listed as numbered HARD checks above
-  because they need no upstream comparison at all --
-  `already-dispatched-violations`/`already-resumed-violations`/
-  `already-accident-reported-violations`/`already-periodic-reported-
-  violations` refuse to repeat the SAME actuation for the SAME site
-  twice, off dedicated boolean facts (never a `:status` value) -- the
-  same 'check a dedicated boolean, not status' discipline every prior
-  sibling governor's guards establish."
+    8. Permit + completion
+       inspection required        -- the GENUINELY-NEW HARD check for the
+                                     physical robot-dispatch (build) slice
+                                     (grep-verified UNIQUE fleet-wide).
+                                     A `:build/dispatch-placement` or
+                                     `:handover/complete` proposal on a
+                                     site with NO ISSUED BUILDING PERMIT
+                                     on file is HARD-held, and
+                                     `:handover/complete` ADDITIONALLY
+                                     requires a PASSED COMPLETION
+                                     INSPECTION. Grounded in 建築基準法
+                                     第6条（建築確認）/第7条（完了検査）,
+                                     IBC §105（permit）/§111（CO + final
+                                     inspection）, Landesbauordnung
+                                     Baugenehmigung/Abnahme + EU CPR
+                                     305/2011 -- cited per-jurisdiction in
+                                     `construction.facts`. Fires ONLY for
+                                     the two build ops, so the existing
+                                     safety-slice checks (incl.
+                                     `:inspection/screen`'s own
+                                     `:unresolved-hazard` hold) are
+                                     untouched.
+
+    9. Robot placement-verification
+       mission missing or
+       independently out-of-
+       tolerance                  -- for `:build/dispatch-placement`,
+                                     has the robot pre-placement
+                                     verification mission
+                                     (`construction.robotics`) actually
+                                     run and been recorded on the site
+                                     (`:robotics-sim-verified?`)? AND
+                                     INDEPENDENTLY recompute whether the
+                                     site's own recorded as-built-
+                                     deviation reading falls out of its
+                                     own recorded tolerance bounds
+                                     (`construction.robotics/
+                                     simulation-out-of-tolerance?`),
+                                     ignoring whatever :passed? verdict
+                                     the mission run itself stored --
+                                     the same 'ground truth, not self-
+                                     report' discipline check 3
+                                     (weather-still-exceeds-threshold)
+                                     above uses for weather. Fires ONLY
+                                     for `:build/dispatch-placement`,
+                                     not `:handover/complete` -- the
+                                     robot mission verifies the panel-
+                                     placement dispatch itself, exactly
+                                     as `automotive.governor`'s sibling
+                                     check gates only `:actuation/
+                                     dispatch-vehicle`, never
+                                     certificate issuance
+                                     (ADR-2607142800).
+
+  Six more guards, double-dispatch/double-authorization/double-report/
+  double-placement/double-handover prevention, are enforced but NOT
+  listed as numbered HARD checks above because they need no upstream
+  comparison at all -- `already-dispatched-violations`/`already-
+  resumed-violations`/`already-accident-reported-violations`/
+  `already-periodic-reported-violations`/`already-placement-dispatched-
+  violations`/`already-handed-over-violations` refuse to repeat the
+  SAME actuation for the SAME site twice, off dedicated boolean facts
+  (never a `:status` value) -- the same 'check a dedicated boolean,
+  not status' discipline every prior sibling governor's guards
+  establish."
   (:require [construction.facts :as facts]
+            [construction.robotics :as robotics]
             [construction.store :as store]))
 
 (def confidence-floor 0.6)
@@ -127,12 +189,14 @@
 (def high-stakes
   "Stakes grave enough to always require a human, even when clean.
   Authorizing work-resume after a severe-weather/disaster hold, filing
-  a legal accident report, and filing a legal periodic-inspection
-  report are the three real-world actuation events this actor performs
-  that ALWAYS need a human. `:actuation/dispatch-alert` (warning site
-  workers) is intentionally NOT a member -- see `construction.phase` ns
-  docstring."
-  #{:actuation/authorize-resume :actuation/file-accident-report :actuation/file-periodic-report})
+  a legal accident report, filing a legal periodic-inspection report,
+  dispatching a robot to physically place a building element, and
+  handing over a completed structure are the five real-world actuation
+  events this actor performs that ALWAYS need a human. `:actuation/
+  dispatch-alert` (warning site workers) is intentionally NOT a member
+  -- see `construction.phase` ns docstring."
+  #{:actuation/authorize-resume :actuation/file-accident-report :actuation/file-periodic-report
+    :build/dispatch-placement :handover/complete})
 
 ;; ----------------------------- checks -----------------------------
 
@@ -142,7 +206,8 @@
   work-stoppage/inspection/reporting requirements."
   [{:keys [op]} proposal]
   (when (contains? #{:weather/assess :actuation/dispatch-alert :actuation/authorize-resume
-                     :actuation/file-accident-report :actuation/file-periodic-report} op)
+                     :actuation/file-accident-report :actuation/file-periodic-report
+                     :build/dispatch-placement :handover/complete} op)
     (let [value (:value proposal)]
       (when (or (empty? (:cites proposal))
                 (and (contains? value :spec-basis) (nil? (:spec-basis value))))
@@ -244,6 +309,94 @@
       [{:rule :already-periodic-reported
         :detail (str subject " は既に定期報告相当を提出済み")}])))
 
+(defn- permit-and-inspection-required-violations
+  "GENUINELY-NEW HARD check for the physical robot-dispatch (build)
+  slice -- grep-verified UNIQUE fleet-wide (no prior sibling governor
+  gates on a building permit). A physical build/handover op must have
+  an ISSUED BUILDING PERMIT on file for the site, and `:handover/
+  complete` must ADDITIONALLY have a PASSED COMPLETION INSPECTION on
+  file. You cannot dispatch a robot to place a building element, nor
+  hand over a structure, without the building-code prerequisites the
+  jurisdiction's own permit/inspection regime requires. CONDITIONAL --
+  fires ONLY for `:build/dispatch-placement` and `:handover/complete`,
+  so the existing safety-slice ops (incl. `:inspection/screen`, which
+  HARD-holds on its own `:unresolved-hazard` finding) are untouched.
+
+  Grounded in REAL construction/building-code law, cited per
+  jurisdiction in `construction.facts` (`:permit-basis` /
+  `:completion-inspection-basis`):
+    - JPN 建築基準法 第6条（建築確認 = permit before construction）/
+      第7条（完了検査 = completion inspection before occupancy/handover）
+    - USA IBC §105（Permits, F105.1 permit required before
+      construction）/ §111（Certificate of Occupancy, issued only after
+      a passed final inspection）-- ICC model code adopted as state/local
+      law by the AHJ; honestly cited as a model code, not federal statute
+    - DEU Landesbauordnung Baugenehmigung（permit）/ Abnahme（acceptance/
+      final inspection）+ EU Construction Products Regulation (EU)
+      No 305/2011（CE marking of construction products）; state-level
+      BauO honestly layered with the EU product regulation
+
+  Distinct from every existing check: this is about the BUILDING-CODE
+  permit/inspection regime (a construction-site's right to build/occupy
+  at all), not the disaster-safety weather/threshold/hazard/injury
+  regime checks 1-7 cover. The site's own `:permit-issued?` /
+  `:build-inspection-passed?` booleans (set via `:site/intake` patches,
+  the same intake-as-fact-source pattern `:injury-occurred?` uses) are
+  the independent fact the governor re-checks -- it never trusts the
+  advisor's self-reported confidence that a permit exists."
+  [{:keys [op subject]} st]
+  (when (contains? #{:build/dispatch-placement :handover/complete} op)
+    (let [a (store/site st subject)]
+      (cond-> []
+        (not (:permit-issued? a))
+        (conj {:rule :permit-not-issued
+               :detail (str subject " に建築確認/建築許可（permit）の記録が無い状態での建築作業/引渡し提案 -- "
+                            (:permit-basis (facts/spec-basis (:jurisdiction a)) "no jurisdiction spec-basis"))})
+        (and (= op :handover/complete) (not (:build-inspection-passed? a)))
+        (conj {:rule :completion-inspection-not-passed
+               :detail (str subject " に完了検査/completion inspection 合格の記録が無い状態での引渡し提案 -- "
+                            (:completion-inspection-basis (facts/spec-basis (:jurisdiction a)) "no jurisdiction spec-basis"))})))))
+
+(defn- robotics-simulation-violations
+  "For `:build/dispatch-placement`: HARD hold if the robot pre-
+  placement verification mission (`construction.robotics`) never ran
+  and was recorded on the site (`:robotics-sim-verified?`), OR if it
+  did but an INDEPENDENT recompute of the site's own as-built-deviation
+  fields (`construction.robotics/simulation-out-of-tolerance?`) says
+  out-of-tolerance right now -- never trusts the mission's own stored
+  :passed? verdict alone, the same discipline `weather-still-exceeds-
+  threshold-violations` above uses for weather. Fires ONLY for
+  `:build/dispatch-placement`, not `:handover/complete` -- the robot
+  mission verifies the panel-placement dispatch itself, not the later
+  handover."
+  [{:keys [op subject]} st]
+  (when (= op :build/dispatch-placement)
+    (let [a (store/site st subject)]
+      (cond
+        (not (:robotics-sim-verified? a))
+        [{:rule :robotics-simulation-missing
+          :detail (str subject " のロボット部材配置前検証ミッション（配筋スキャン/トータルステーション出来形測量/供試体圧縮強度試験）が未実行・未合格")}]
+
+        (robotics/simulation-out-of-tolerance? a)
+        [{:rule :robotics-simulation-out-of-tolerance
+          :detail (str subject " の出来形（as-built）偏差実測値("
+                       (:as-built-deviation-actual a) ")が独立再検証で許容範囲["
+                       (:as-built-deviation-min a) "," (:as-built-deviation-max a) "]を逸脱")}]))))
+
+(defn- already-placement-dispatched-violations
+  [{:keys [op subject]} st]
+  (when (= op :build/dispatch-placement)
+    (when (store/site-already-placement-dispatched? st subject)
+      [{:rule :already-placement-dispatched
+        :detail (str subject " は既にロボット部材配置 dispatch 済み")}])))
+
+(defn- already-handed-over-violations
+  [{:keys [op subject]} st]
+  (when (= op :handover/complete)
+    (when (store/site-already-handed-over? st subject)
+      [{:rule :already-handed-over
+        :detail (str subject " は既に引渡し（handover）完了済み")}])))
+
 (defn check
   "Censors a Construction Advisor proposal against the governor rules.
   Returns {:ok? bool :violations [..] :confidence c :escalate? bool
@@ -256,10 +409,14 @@
                            (inspection-incomplete-violations request st)
                            (unresolved-hazard-violations request proposal st)
                            (fabricated-accident-report-violations request st)
+                           (permit-and-inspection-required-violations request st)
+                           (robotics-simulation-violations request st)
                            (already-dispatched-violations request st)
                            (already-resumed-violations request st)
                            (already-accident-reported-violations request st)
-                           (already-periodic-reported-violations request st)))
+                           (already-periodic-reported-violations request st)
+                           (already-placement-dispatched-violations request st)
+                           (already-handed-over-violations request st)))
         conf (:confidence proposal 0.0)
         low? (< conf confidence-floor)
         stakes? (boolean (high-stakes (:stake proposal)))

@@ -5,13 +5,16 @@
   It normalizes site intake, drafts a per-jurisdiction severe-weather
   work-stoppage assessment, screens sites for an unresolved post-event
   hazard, drafts the disaster-alert dispatch (mail + phone) action,
-  drafts the work-resume authorization, and drafts the accident-report
-  and periodic-report filings. CRITICAL: it is a smart-but-untrusted
-  advisor. It returns a *proposal* (with a rationale + the fields it
-  cited), never a committed record, a real mail/phone send, or a real
-  filing. Every output is censored downstream by `construction.governor`
-  before anything touches the SSoT, and every `:actuation/*` proposal
-  is gated by phase + governor -- see README `Actuation`.
+  drafts the work-resume authorization, drafts the accident-report and
+  periodic-report filings, runs the robot pre-placement verification
+  mission, and drafts the physical robot placement-dispatch (build)
+  and structure handover (引渡し) actions. CRITICAL: it
+  is a smart-but-untrusted advisor. It returns a *proposal* (with a
+  rationale + the fields it cited), never a committed record, a real
+  mail/phone send, or a real filing. Every output is censored
+  downstream by `construction.governor` before anything touches the
+  SSoT, and every `:actuation/*`/`:build/*`/`:handover/*` proposal is
+  gated by phase + governor -- see README `Actuation`.
 
   Like every sibling actor's advisor, this is a deterministic mock so
   the actor graph runs offline and the governor contract is exercised
@@ -29,6 +32,7 @@
                :cljs [cljs.reader :as edn])
             [clojure.string :as str]
             [construction.facts :as facts]
+            [construction.robotics :as robotics]
             [construction.store :as store]
             [langchain.model :as model]))
 
@@ -196,6 +200,90 @@
      :stake      :actuation/file-periodic-report
      :confidence (if (and a sb (:periodic-report-basis sb)) 0.85 0.3)}))
 
+(defn- simulate-placement-verification
+  "Runs the robot pre-placement verification mission
+  (`construction.robotics`) and drafts its result as a proposal. High
+  confidence -- the mission itself is deterministic simulated telemetry
+  derived from the site's own recorded as-built-deviation fields, not
+  an LLM guess; the Construction Governor still independently re-
+  derives :passed? from those same fields before any `:build/dispatch-
+  placement` proposal may commit -- see `construction.governor`'s
+  `robotics-simulation-violations`."
+  [db {:keys [subject]}]
+  (let [a (store/site db subject)]
+    (if (nil? a)
+      {:summary "対象現場記録が見つかりません" :rationale "no site record"
+       :cites [] :effect :site/upsert :value {:id subject :robotics-sim-verified? false}
+       :stake nil :confidence 0.0}
+      (let [{:keys [mission actions passed?]} (robotics/simulate-placement-verification subject a)]
+        {:summary    (str subject ": ロボット部材配置前検証ミッション " (if passed? "合格" "不合格"))
+         :rationale  (str "mission=" (:mission/id mission) " actions=" (count actions)
+                          " as-built-deviation-actual=" (:as-built-deviation-actual a))
+         :cites      [(:mission/id mission)]
+         :effect     :site/upsert
+         :value      {:id subject
+                      :robotics-sim-verified? passed?
+                      :robotics-sim-record {:mission-id (:mission/id mission)
+                                            :actions (mapv #(dissoc % :action) actions)
+                                            :passed? passed?}}
+         :stake      nil
+         :confidence 0.95}))))
+
+(defn- propose-dispatch-placement
+  "Draft the ROBOT PLACEMENT-DISPATCH action -- a construction robot
+  physically places a building element (the Operator Guide's exterior-
+  envelope-panel Day-in-the-life example). The action names the robot,
+  the panel and the wall location it reads off the site's own
+  `:build-target` record (set via `:site/intake` -- the advisor
+  normalizes, it does not invent the target). ALWAYS `:stake
+  :build/dispatch-placement` -- work at height / near the public, a
+  real physical act, always a human's call (see README `Actuation` +
+  operator-guide Day-in-the-life). The Construction Governor
+  ADDITIONALLY HARD-requires an ISSUED BUILDING PERMIT on file
+  (check 8) AND a robot pre-placement verification mission actually
+  run and independently confirmed in-tolerance (check 9,
+  `construction.robotics`) before this can ever commit."
+  [db {:keys [subject]}]
+  (let [a (store/site db subject)
+        sb (facts/spec-basis (:jurisdiction a))
+        target (:build-target a)
+        panel (:panel target "exterior-envelope-panel")
+        wall-location (:wall-location target "north-wall-unit-4")
+        robot-id (:robot-id target "robot-1")]
+    {:summary    (str subject " 向けロボット部材配置（" panel " @ " wall-location " by " robot-id "）dispatch提案"
+                      (when a (str " (site=" (:name a) ")")))
+     :rationale  (if sb
+                   (str "建築許可（permit）basis: " (:permit-basis sb) " / 出典: " (:permit-provenance sb)
+                        " / permit-issued?=" (:permit-issued? a))
+                   "現場記録または法域spec-basisが見つかりません")
+     :cites      (if sb [(:permit-basis sb) (:permit-provenance sb)] [])
+     :effect     :site/mark-placement-dispatched
+     :value      {:site-id subject :panel panel :wall-location wall-location :robot-id robot-id
+                  :permit-scope (when sb (:permit-basis sb))}
+     :stake      :build/dispatch-placement
+     :confidence (if (and a sb (:permit-issued? a)) 0.9 0.3)}))
+
+(defn- propose-complete-handover
+  "Draft the STRUCTURE HANDOVER -- handing over the completed,
+  inspected structure (引渡し). ALWAYS `:stake :handover/complete` --
+  a real act, always a human's call. The Construction Governor
+  ADDITIONALLY HARD-requires BOTH an ISSUED PERMIT and a PASSED
+  COMPLETION INSPECTION on file (check 8) before this can ever commit."
+  [db {:keys [subject]}]
+  (let [a (store/site db subject)
+        sb (facts/spec-basis (:jurisdiction a))]
+    {:summary    (str subject " 向け引渡し（handover）完了提案"
+                      (when a (str " (site=" (:name a) ")")))
+     :rationale  (if sb
+                   (str "完了検査 basis: " (:completion-inspection-basis sb) " / 出典: " (:completion-inspection-provenance sb)
+                        " / permit-issued?=" (:permit-issued? a) " / build-inspection-passed?=" (:build-inspection-passed? a))
+                   "現場記録または法域spec-basisが見つかりません")
+     :cites      (if sb [(:completion-inspection-basis sb) (:completion-inspection-provenance sb)] [])
+     :effect     :site/mark-handed-over
+     :value      {:site-id subject}
+     :stake      :handover/complete
+     :confidence (if (and a sb (:permit-issued? a) (:build-inspection-passed? a)) 0.9 0.3)}))
+
 (defn infer
   "Route a request to the right proposal generator.
   request: {:op kw :subject id ...op-specific...}"
@@ -204,10 +292,13 @@
     :site/intake                           (normalize-intake db request)
     :weather/assess                        (assess-weather db request)
     :inspection/screen                     (screen-hazard db request)
+    :robotics/simulate-placement-verification (simulate-placement-verification db request)
     :actuation/dispatch-alert              (propose-dispatch-alert db request)
     :actuation/authorize-resume            (propose-authorize-resume db request)
     :actuation/file-accident-report        (propose-file-accident-report db request)
     :actuation/file-periodic-report        (propose-file-periodic-report db request)
+    :build/dispatch-placement              (propose-dispatch-placement db request)
+    :handover/complete                     (propose-complete-handover db request)
     {:summary "未対応の操作" :rationale (str op) :cites []
      :effect :noop :stake nil :confidence 0.0}))
 
@@ -227,9 +318,12 @@
        "キー: :summary(人向けドラフト) :rationale(根拠/必ず事実から) "
        ":cites(使った事実キーのベクタ) "
        ":effect(:site/upsert|:weather-assessment/set|:inspection/set|"
-       ":site/mark-alert-dispatched|:site/mark-resumed|:site/mark-accident-reported|:site/mark-periodic-reported) "
+       ":site/mark-alert-dispatched|:site/mark-resumed|:site/mark-accident-reported|:site/mark-periodic-reported|"
+       ":site/mark-placement-dispatched|:site/mark-handed-over) "
+       "(:robotics/simulate-placement-verification も :site/upsert で "
+       ":robotics-sim-verified? を提案する) "
        ":stake(:actuation/dispatch-alert|:actuation/authorize-resume|:actuation/file-accident-report|"
-       ":actuation/file-periodic-report か nil) :confidence(0..1)。\n"
+       ":actuation/file-periodic-report|:build/dispatch-placement|:handover/complete か nil) :confidence(0..1)。\n"
        "重要: 登録されていない法域の要件を絶対に創作してはいけません。"
        "legal-basisが無い場合は :cites を空にし confidence を上げないこと。"))
 

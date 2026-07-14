@@ -22,11 +22,16 @@
   decision to a human operator (the site safety officer). The approver
   resumes with `{:approval {:status :approved}}` (or :rejected).
   `:actuation/authorize-resume`/`:actuation/file-accident-report`/
-  `:actuation/file-periodic-report` ALWAYS reach this node when the
-  governor is clean -- see `construction.phase`. `:actuation/dispatch-
-  alert` is the deliberate exception: at phase 3, governor-clean, it
-  commits directly (see `construction.phase` ns docstring 'Actuation')
-  and `:notify` (below) actually sends the mail + phone messages."
+  `:actuation/file-periodic-report`/`:build/dispatch-placement`/
+  `:handover/complete` ALWAYS reach this node when the governor is
+  clean -- see `construction.phase`. `:actuation/dispatch-alert` is
+  the deliberate exception: at phase 3, governor-clean, it commits
+  directly (see `construction.phase` ns docstring 'Actuation') and
+  `:notify` (below) actually sends the mail + phone messages. The
+  build/handover ops commit through the SAME `:commit` node but do NOT
+  notify -- a robot placement and a structure handover are physical
+  acts logged to the audit ledger, not comms fan-out (only
+  `:actuation/dispatch-alert` sends mail+phone)."
   (:require [langgraph.graph :as g]
             [langgraph.checkpoint :as cp]
             [construction.constructionadvisor :as constructionadvisor]
