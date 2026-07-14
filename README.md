@@ -14,6 +14,17 @@ actions and an independent **Construction Governor** that gates them. The govern
 dispatches hardware itself; `:high`/`:safety-critical` actions (such as
 operating on site, near the public or at height) require human sign-off.
 
+**Robot process simulation is concrete, not just a flag** (ADR-2607150700,
+extending ADR-2607142800 / ADR-2607011000): `construction.robotics` walks
+every build-target site through a robot-executed pre-placement
+verification mission (`kotoba.robotics` mission/action/telemetry-proof
+contracts) -- rebar-placement scan, robotic total-station as-built
+survey, concrete-cure compressive-strength test-cylinder press --
+before `:build/dispatch-placement` is proposable. The Construction
+Governor independently re-derives the site's own as-built-deviation
+tolerance from ground-truth fields, never trusting the mission's
+self-reported verdict alone.
+
 ## Core Contract
 
 ```text
@@ -72,11 +83,13 @@ rollout) every prior `cloud-itonami-isic-*` actor in this fleet uses
 ### Slice 2 — physical robot-dispatch (build)
 
 The Operator Guide's Day-in-the-life exterior-envelope-panel example is
-now real code. Two physical actuation ops on the same `site` entity:
+now real code. Two physical actuation ops on the same `site` entity,
+gated by a concrete robot pre-placement verification mission:
 
 | Ask | Implementation |
 |---|---|
-| 施工 (build / robot placement) | `:build/dispatch-placement` -- a construction robot physically places a building element (panel @ wall by robot, read off the site's `:build-target`). Governor check 8 HARD-requires an ISSUED BUILDING PERMIT on file before this can ever commit |
+| ロボット検証 (robot pre-placement verification) | `:robotics/simulate-placement-verification` -- runs the robot mission (`construction.robotics`: rebar-placement scan / total-station as-built survey / concrete-cure test-cylinder press) and records `:robotics-sim-verified?` + `:robotics-sim-record` on the site (always human approval, never auto) |
+| 施工 (build / robot placement) | `:build/dispatch-placement` -- a construction robot physically places a building element (panel @ wall by robot, read off the site's `:build-target`). Governor check 8 HARD-requires an ISSUED BUILDING PERMIT on file, and check 9 HARD-requires the robot pre-placement verification mission to have actually run and independently recheck in-tolerance, before this can ever commit |
 | 引渡し (handover) | `:handover/complete` -- hand over the completed, inspected structure. Governor check 8 ADDITIONALLY HARD-requires a PASSED COMPLETION INSPECTION on file. `construction.registry/render-handover-certificate` produces the completion certificate, citing the jurisdiction's completion-inspection basis inline |
 
 **Legal basis is data, not code** -- `src/construction/facts.cljc`'s
@@ -117,12 +130,18 @@ human-approved `:stop-work` weather assessment already committed),
 because for a disaster warning dispatch SPEED is itself the safety
 property. The other five never auto-commit at any phase -- see
 `construction.phase` ns docstring 'Actuation' section,
-`construction.governor` checks 2/7/8, and `docs/adr/0002-robot-dispatch-
-slice.md` for the build-slice decisions.
+`construction.governor` checks 2/7/8/9, and `docs/adr/0002-robot-
+dispatch-slice.md` for the build-slice decisions.
+`:robotics/simulate-placement-verification` is not itself an
+actuation event (`:stake nil`), but like `:inspection/screen` it is
+never auto-eligible at any phase either -- see
+`90-docs/adr/2607150700-cloud-itonami-isic-4211-robotics-retrofit.md`
+(extending ADR-2607142800 / ADR-2607011000) for the concrete robot
+pre-placement verification mission gating `:build/dispatch-placement`.
 
 ```bash
-clojure -M:dev:run    # demo: full typhoon episode + robot-dispatch build slice + every HARD hold
-clojure -M:dev:test   # 78 tests / 344 assertions
+clojure -M:dev:run    # demo: full typhoon episode + robot-dispatch build slice + robot pre-placement verification + every HARD hold
+clojure -M:dev:test   # 83 tests / 372 assertions
 clojure -M:lint       # clj-kondo, errors fail
 ```
 

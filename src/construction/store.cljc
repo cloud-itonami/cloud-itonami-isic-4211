@@ -88,10 +88,12 @@
 (defn demo-data
   "A small, self-contained site set covering all six actuation
   lifecycles (the four disaster/severe-weather safety events plus the
-  two robot-dispatch build/handover events) and the uncovered-
+  two robot-dispatch build/handover events), the robot pre-placement
+  verification mission (`:robotics-sim-verified?` / as-built-deviation-*
+  ground-truth fields, `construction.robotics`), and the uncovered-
   jurisdiction / unresolved-hazard / no-injury / no-permit / no-
-  completion-inspection failure modes, so the actor + tests run
-  offline."
+  completion-inspection / no-robotics-sim / out-of-tolerance-robotics-
+  sim failure modes, so the actor + tests run offline."
   []
   {:sites
    {"site-1" {:id "site-1" :name "Sakura Community Housing Block C"
@@ -102,7 +104,9 @@
               :alert-dispatched? false :work-resumed? false
               :accident-reported? false :periodic-report-filed? false
               :placement-dispatched? false :handed-over? false
-              :permit-issued? false :build-inspection-passed? false :status :intake}
+              :permit-issued? false :build-inspection-passed? false
+              :as-built-deviation-actual 5 :as-built-deviation-min -15 :as-built-deviation-max 15
+              :robotics-sim-verified? false :robotics-sim-record nil :status :intake}
     "site-2" {:id "site-2" :name "Atlantis Waterfront Tower"
               :jurisdiction "ATL" :wind-speed-actual 12 :rainfall-actual 0 :snowfall-actual 0
               :hazard-unresolved? false :injury-occurred? false
@@ -110,7 +114,9 @@
               :alert-dispatched? false :work-resumed? false
               :accident-reported? false :periodic-report-filed? false
               :placement-dispatched? false :handed-over? false
-              :permit-issued? false :build-inspection-passed? false :status :intake}
+              :permit-issued? false :build-inspection-passed? false
+              :as-built-deviation-actual 5 :as-built-deviation-min -15 :as-built-deviation-max 15
+              :robotics-sim-verified? false :robotics-sim-record nil :status :intake}
     "site-3" {:id "site-3" :name "鈴木団地 改修工事"
               :jurisdiction "JPN" :wind-speed-actual 3 :rainfall-actual 0 :snowfall-actual 0
               :hazard-unresolved? true :injury-occurred? false
@@ -118,7 +124,9 @@
               :alert-dispatched? false :work-resumed? false
               :accident-reported? false :periodic-report-filed? false
               :placement-dispatched? false :handed-over? false
-              :permit-issued? false :build-inspection-passed? false :status :intake}
+              :permit-issued? false :build-inspection-passed? false
+              :as-built-deviation-actual 5 :as-built-deviation-min -15 :as-built-deviation-max 15
+              :robotics-sim-verified? false :robotics-sim-record nil :status :intake}
     "site-4" {:id "site-4" :name "田中ビル外壁改修"
               :jurisdiction "JPN" :wind-speed-actual 2 :rainfall-actual 0 :snowfall-actual 0
               :hazard-unresolved? false :injury-occurred? false
@@ -129,7 +137,9 @@
               :alert-dispatched? false :work-resumed? false
               :accident-reported? false :periodic-report-filed? false
               :placement-dispatched? false :handed-over? false
-              :permit-issued? false :build-inspection-passed? false :status :intake}
+              :permit-issued? false :build-inspection-passed? false
+              :as-built-deviation-actual 5 :as-built-deviation-min -15 :as-built-deviation-max 15
+              :robotics-sim-verified? false :robotics-sim-record nil :status :intake}
     "site-5" {:id "site-5" :name "Liberty Ave Apartments"
               :jurisdiction "USA" :wind-speed-actual 20 :rainfall-actual 60 :snowfall-actual 0
               :hazard-unresolved? false :injury-occurred? false
@@ -137,7 +147,19 @@
               :alert-dispatched? false :work-resumed? false
               :accident-reported? false :periodic-report-filed? false
               :placement-dispatched? false :handed-over? false
-              :permit-issued? false :build-inspection-passed? false :status :intake}}})
+              :permit-issued? false :build-inspection-passed? false
+              :as-built-deviation-actual 5 :as-built-deviation-min -15 :as-built-deviation-max 15
+              :robotics-sim-verified? false :robotics-sim-record nil :status :intake}
+    "site-6" {:id "site-6" :name "ことぶき小学校増築棟"
+              :jurisdiction "JPN" :wind-speed-actual 2 :rainfall-actual 0 :snowfall-actual 0
+              :hazard-unresolved? false :injury-occurred? false
+              :worker-contacts [{:name "Watanabe" :email "watanabe@example.com" :phone "+819000000005"}]
+              :alert-dispatched? false :work-resumed? false
+              :accident-reported? false :periodic-report-filed? false
+              :placement-dispatched? false :handed-over? false
+              :permit-issued? true :build-inspection-passed? false
+              :as-built-deviation-actual 40 :as-built-deviation-min -15 :as-built-deviation-max 15
+              :robotics-sim-verified? true :robotics-sim-record nil :status :build}}})
 
 ;; ----------------------------- shared commit logic -----------------------------
 
@@ -351,7 +373,9 @@
                          periodic-report-filed? periodic-report-number
                          placement-dispatched? placement-number
                          handed-over? handover-number
-                         permit-issued? build-inspection-passed? status]}]
+                         permit-issued? build-inspection-passed?
+                         as-built-deviation-actual as-built-deviation-min as-built-deviation-max
+                         robotics-sim-verified? robotics-sim-record status]}]
   (cond-> {:site/id id}
     name                                (assoc :site/name name)
     jurisdiction                        (assoc :site/jurisdiction jurisdiction)
@@ -377,6 +401,11 @@
     handover-number                     (assoc :site/handover-number handover-number)
     (some? permit-issued?)              (assoc :site/permit-issued? permit-issued?)
     (some? build-inspection-passed?)    (assoc :site/build-inspection-passed? build-inspection-passed?)
+    (number? as-built-deviation-actual)  (assoc :site/as-built-deviation-actual as-built-deviation-actual)
+    (number? as-built-deviation-min)     (assoc :site/as-built-deviation-min as-built-deviation-min)
+    (number? as-built-deviation-max)     (assoc :site/as-built-deviation-max as-built-deviation-max)
+    (some? robotics-sim-verified?)       (assoc :site/robotics-sim-verified? robotics-sim-verified?)
+    (some? robotics-sim-record)          (assoc :site/robotics-sim-record (enc robotics-sim-record))
     status                              (assoc :site/status status)))
 
 (def ^:private site-pull
@@ -389,7 +418,9 @@
    :site/periodic-report-filed? :site/periodic-report-number
    :site/placement-dispatched? :site/placement-number
    :site/handed-over? :site/handover-number
-   :site/permit-issued? :site/build-inspection-passed? :site/status])
+   :site/permit-issued? :site/build-inspection-passed?
+   :site/as-built-deviation-actual :site/as-built-deviation-min :site/as-built-deviation-max
+   :site/robotics-sim-verified? :site/robotics-sim-record :site/status])
 
 (defn- pull->site [m]
   (when (:site/id m)
@@ -408,6 +439,11 @@
              :handed-over? (boolean (:site/handed-over? m)) :handover-number (:site/handover-number m)
              :permit-issued? (boolean (:site/permit-issued? m))
              :build-inspection-passed? (boolean (:site/build-inspection-passed? m))
+             :as-built-deviation-actual (:site/as-built-deviation-actual m)
+             :as-built-deviation-min (:site/as-built-deviation-min m)
+             :as-built-deviation-max (:site/as-built-deviation-max m)
+             :robotics-sim-verified? (boolean (:site/robotics-sim-verified? m))
+             :robotics-sim-record (dec* (:site/robotics-sim-record m))
              :status (:site/status m)}
       (:site/build-target-edn m) (assoc :build-target (dec* (:site/build-target-edn m))))))
 

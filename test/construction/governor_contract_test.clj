@@ -222,6 +222,18 @@
   (exec-op actor (str tid-prefix "-insp") {:op :site/intake :subject subject
                                            :patch {:id subject :build-inspection-passed? true}} operator))
 
+(defn- simulate-robotics!
+  "Walks `subject` through the robot pre-placement verification
+  mission -> approve, leaving `:robotics-sim-verified?` on file. Only
+  meaningful to call for a site whose as-built-deviation is actually
+  within tolerance -- an out-of-tolerance site still gets
+  `:robotics-sim-verified?` recorded (per whatever the mission itself
+  found), but `construction.governor`'s independent recheck HARD-holds
+  regardless (see `robotics-simulation-out-of-tolerance-is-held`)."
+  [actor tid-prefix subject]
+  (exec-op actor (str tid-prefix "-robotics") {:op :robotics/simulate-placement-verification :subject subject} operator)
+  (approve! actor (str tid-prefix "-robotics")))
+
 (deftest placement-without-permit-is-held
   (testing "site-1 has no building permit on file -> HARD hold, the physical dispatch never reaches a human"
     (let [[db actor] (fresh)
@@ -249,9 +261,10 @@
       (is (not (some #{:permit-not-issued} (-> (store/ledger db) last :basis))) "permit IS on file -- not the violation here"))))
 
 (deftest placement-always-escalates-then-human-decides
-  (testing "a permitted site's panel-placement STILL ALWAYS interrupts for human approval -- a physical act, never auto"
+  (testing "a permitted, robotics-simulated site's panel-placement STILL ALWAYS interrupts for human approval -- a physical act, never auto"
     (let [[db actor] (fresh)
           _ (permit! actor "b4pre" "site-1")
+          _ (simulate-robotics! actor "b4pre2" "site-1")
           r1 (exec-op actor "b4" {:op :build/dispatch-placement :subject "site-1"} operator)]
       (is (= :interrupted (:status r1)) "pauses for human approval even when governor-clean")
       (let [r2 (approve! actor "b4")]
@@ -276,6 +289,7 @@
 (deftest double-placement-is-held
   (let [[db actor] (fresh)
         _ (permit! actor "b6pre" "site-1")
+        _ (simulate-robotics! actor "b6pre2" "site-1")
         _ (exec-op actor "b6a" {:op :build/dispatch-placement :subject "site-1"} operator)
         _ (approve! actor "b6a")
         res (exec-op actor "b6" {:op :build/dispatch-placement :subject "site-1"} operator)]
@@ -293,6 +307,32 @@
     (is (= :hold (get-in res [:state :disposition])))
     (is (some #{:already-handed-over} (-> (store/ledger db) last :basis)))
     (is (= 1 (count (store/handover-history db))))))
+
+(deftest robotics-simulation-always-needs-approval
+  (testing "robotics/simulate-placement-verification is never in any phase's :auto set -- always human approval, even when clean"
+    (let [[db actor] (fresh)
+          res (exec-op actor "b8" {:op :robotics/simulate-placement-verification :subject "site-1"} operator)]
+      (is (= :interrupted (:status res)))
+      (let [r2 (approve! actor "b8")]
+        (is (= :commit (get-in r2 [:state :disposition])))
+        (is (true? (:robotics-sim-verified? (store/site db "site-1"))))))))
+
+(deftest dispatch-placement-without-robotics-simulation-is-held
+  (testing "build/dispatch-placement before the robot pre-placement verification mission ever ran -> HOLD (robotics-simulation-missing)"
+    (let [[db actor] (fresh)
+          _ (permit! actor "b9pre" "site-1")
+          res (exec-op actor "b9" {:op :build/dispatch-placement :subject "site-1"} operator)]
+      (is (= :hold (get-in res [:state :disposition])))
+      (is (some #{:robotics-simulation-missing} (-> (store/ledger db) last :basis)))
+      (is (empty? (store/placement-history db))))))
+
+(deftest robotics-simulation-out-of-tolerance-is-held
+  (testing "site-6 has a robotics-sim already on file (and a permit), but its own as-built-deviation reading falls outside its own tolerance bounds on INDEPENDENT recheck -> HOLD, never trusts the on-file verdict alone"
+    (let [[db actor] (fresh)
+          res (exec-op actor "b10" {:op :build/dispatch-placement :subject "site-6"} operator)]
+      (is (= :hold (get-in res [:state :disposition])))
+      (is (some #{:robotics-simulation-out-of-tolerance} (-> (store/ledger db) last :basis)))
+      (is (empty? (store/placement-history db))))))
 
 (deftest placement-and-handover-never-auto-at-any-phase
   (testing "structural invariant: a physical placement / handover is never auto-eligible at any phase, even when clean"

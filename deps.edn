@@ -8,7 +8,9 @@
  ;; transports use only `java.net.http` + a hand-rolled minimal JSON/form
  ;; encoder (see ns docstring) -- no extra HTTP/JSON library dependency.
  :deps {io.github.com-junkawasaki/langgraph-clj
-        {:local/root "../../com-junkawasaki/langgraph-clj"}}
+        {:local/root "../../com-junkawasaki/langgraph-clj"}
+        io.github.kotoba-lang/robotics
+        {:local/root "../../kotoba-lang/robotics"}}
  :aliases
  {;; offline workspace dev -- pin transitive langchain-clj to local checkout
   :dev {:override-deps

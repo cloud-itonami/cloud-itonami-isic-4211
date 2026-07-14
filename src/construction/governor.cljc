@@ -12,15 +12,17 @@
   to HOLD -- the construction-safety analog of `cloud-itonami-isic-
   3030`'s Aerospace Manufacturing Governor.
 
-  Eight checks, in priority order, ALL HARD violations: a human
+  Nine checks, in priority order, ALL HARD violations: a human
   approver CANNOT override them (you don't get to approve your way
   past a fabricated jurisdiction spec-basis, a disaster alert with no
   human-approved weather determination behind it, a site still
   measurably over its own legal weather threshold, an incomplete/
   unresolved mandatory inspection, a build/handover with no building-
-  code permit/inspection on file, or a double dispatch/authorization/
-  report/placement/handover). The confidence/high-stakes gate is SOFT:
-  it asks a human to look, and the human may approve.
+  code permit/inspection on file, a robot placement-verification
+  mission that never ran or that independently re-checks out-of-
+  tolerance, or a double dispatch/authorization/report/placement/
+  handover). The confidence/high-stakes gate is SOFT: it asks a human
+  to look, and the human may approve.
 
     1. Legal-basis missing       -- did the `:weather/assess`/actuation
                                      proposal cite an OFFICIAL source
@@ -136,6 +138,37 @@
                                      `:unresolved-hazard` hold) are
                                      untouched.
 
+    9. Robot placement-verification
+       mission missing or
+       independently out-of-
+       tolerance                  -- for `:build/dispatch-placement`,
+                                     has the robot pre-placement
+                                     verification mission
+                                     (`construction.robotics`) actually
+                                     run and been recorded on the site
+                                     (`:robotics-sim-verified?`)? AND
+                                     INDEPENDENTLY recompute whether the
+                                     site's own recorded as-built-
+                                     deviation reading falls out of its
+                                     own recorded tolerance bounds
+                                     (`construction.robotics/
+                                     simulation-out-of-tolerance?`),
+                                     ignoring whatever :passed? verdict
+                                     the mission run itself stored --
+                                     the same 'ground truth, not self-
+                                     report' discipline check 3
+                                     (weather-still-exceeds-threshold)
+                                     above uses for weather. Fires ONLY
+                                     for `:build/dispatch-placement`,
+                                     not `:handover/complete` -- the
+                                     robot mission verifies the panel-
+                                     placement dispatch itself, exactly
+                                     as `automotive.governor`'s sibling
+                                     check gates only `:actuation/
+                                     dispatch-vehicle`, never
+                                     certificate issuance
+                                     (ADR-2607142800).
+
   Six more guards, double-dispatch/double-authorization/double-report/
   double-placement/double-handover prevention, are enforced but NOT
   listed as numbered HARD checks above because they need no upstream
@@ -148,6 +181,7 @@
   not status' discipline every prior sibling governor's guards
   establish."
   (:require [construction.facts :as facts]
+            [construction.robotics :as robotics]
             [construction.store :as store]))
 
 (def confidence-floor 0.6)
@@ -323,6 +357,32 @@
                :detail (str subject " に完了検査/completion inspection 合格の記録が無い状態での引渡し提案 -- "
                             (:completion-inspection-basis (facts/spec-basis (:jurisdiction a)) "no jurisdiction spec-basis"))})))))
 
+(defn- robotics-simulation-violations
+  "For `:build/dispatch-placement`: HARD hold if the robot pre-
+  placement verification mission (`construction.robotics`) never ran
+  and was recorded on the site (`:robotics-sim-verified?`), OR if it
+  did but an INDEPENDENT recompute of the site's own as-built-deviation
+  fields (`construction.robotics/simulation-out-of-tolerance?`) says
+  out-of-tolerance right now -- never trusts the mission's own stored
+  :passed? verdict alone, the same discipline `weather-still-exceeds-
+  threshold-violations` above uses for weather. Fires ONLY for
+  `:build/dispatch-placement`, not `:handover/complete` -- the robot
+  mission verifies the panel-placement dispatch itself, not the later
+  handover."
+  [{:keys [op subject]} st]
+  (when (= op :build/dispatch-placement)
+    (let [a (store/site st subject)]
+      (cond
+        (not (:robotics-sim-verified? a))
+        [{:rule :robotics-simulation-missing
+          :detail (str subject " のロボット部材配置前検証ミッション（配筋スキャン/トータルステーション出来形測量/供試体圧縮強度試験）が未実行・未合格")}]
+
+        (robotics/simulation-out-of-tolerance? a)
+        [{:rule :robotics-simulation-out-of-tolerance
+          :detail (str subject " の出来形（as-built）偏差実測値("
+                       (:as-built-deviation-actual a) ")が独立再検証で許容範囲["
+                       (:as-built-deviation-min a) "," (:as-built-deviation-max a) "]を逸脱")}]))))
+
 (defn- already-placement-dispatched-violations
   [{:keys [op subject]} st]
   (when (= op :build/dispatch-placement)
@@ -350,6 +410,7 @@
                            (unresolved-hazard-violations request proposal st)
                            (fabricated-accident-report-violations request st)
                            (permit-and-inspection-required-violations request st)
+                           (robotics-simulation-violations request st)
                            (already-dispatched-violations request st)
                            (already-resumed-violations request st)
                            (already-accident-reported-violations request st)

@@ -36,6 +36,17 @@
       (is (not (contains? auto :handover/complete))
           (str "phase " n " must not auto-commit :handover/complete")))))
 
+(deftest robotics-simulate-placement-verification-never-auto-at-any-phase
+  (testing "the robot pre-placement verification mission carries no direct capital risk, but is still never auto-eligible, matching every sibling verification op in this fleet"
+    (doseq [[n {:keys [auto]}] phase/phases]
+      (is (not (contains? auto :robotics/simulate-placement-verification))
+          (str "phase " n " must not auto-commit :robotics/simulate-placement-verification")))))
+
+(deftest robotics-simulate-placement-verification-enabled-from-phase-2
+  (is (contains? (:writes (get phase/phases 2)) :robotics/simulate-placement-verification))
+  (is (contains? (:writes (get phase/phases 3)) :robotics/simulate-placement-verification))
+  (is (not (contains? (:writes (get phase/phases 1)) :robotics/simulate-placement-verification))))
+
 (deftest build-and-handover-are-write-ops
   (testing "the build ops ARE members of write-ops (governor-gated like any write) even though never auto"
     (is (contains? phase/write-ops :build/dispatch-placement))

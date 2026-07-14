@@ -6,7 +6,9 @@
     Phase 1  assisted-intake  -- site intake allowed, every write
                                  needs human approval.
     Phase 2  assisted-verify  -- adds weather assessment + hazard
-                                 screening writes, still approval.
+                                 screening + robot pre-placement
+                                 verification simulation writes, still
+                                 approval.
     Phase 3  supervised auto  -- governor-clean, high-confidence
                                  `:site/intake` (no capital risk yet)
                                  AND `:actuation/dispatch-alert` may
@@ -43,12 +45,15 @@
   only auto-commits when `construction.governor/check` is clean (a
   real legal-basis citation on file, the site not already dispatched)
   -- see `construction.governor` high-stakes set and check 1
-  (legal-basis-missing). `:inspection/screen` is never auto-eligible,
-  at any phase -- the same posture every sibling's screening op has."
+  (legal-basis-missing). `:inspection/screen`/`:robotics/simulate-
+  placement-verification` are likewise never auto-eligible, at any
+  phase -- the same posture every sibling's screening/verification op
+  has."
   )
 
 (def read-ops  #{})
 (def write-ops #{:site/intake :weather/assess :inspection/screen
+                 :robotics/simulate-placement-verification
                  :actuation/dispatch-alert :actuation/authorize-resume
                  :actuation/file-accident-report :actuation/file-periodic-report
                  :build/dispatch-placement :handover/complete})
@@ -68,7 +73,8 @@
   auto-commit when governor-clean>}."
   {0 {:label "read-only"        :writes #{}                                                          :auto #{}}
    1 {:label "assisted-intake"  :writes #{:site/intake}                                              :auto #{}}
-   2 {:label "assisted-verify"  :writes #{:site/intake :weather/assess :inspection/screen}            :auto #{}}
+   2 {:label "assisted-verify"  :writes #{:site/intake :weather/assess :inspection/screen
+                                          :robotics/simulate-placement-verification}          :auto #{}}
    3 {:label "supervised-auto"  :writes write-ops
       :auto #{:site/intake :actuation/dispatch-alert}}})
 

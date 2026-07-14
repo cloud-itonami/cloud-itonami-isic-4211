@@ -18,11 +18,19 @@
   THEN the ROBOT-DISPATCH (build) slice on site-4 (田中ビル外墙改修,
   exterior-wall renovation -- the Operator Guide's exterior-envelope-
   panel Day-in-the-life example): the permit/design record is
-  registered via intake (auto-commits) -> a robot panel-placement is
-  dispatched (human approves -- a physical act, never auto) -> the
-  completion inspection is recorded via intake (auto-commits) -> the
-  structure is handed over (human approves, handover certificate
-  rendered) -> a USA (IBC §105/§111) build walkthrough -> then four
+  registered via intake (auto-commits) -> a panel-placement dispatch
+  attempted BEFORE the robot pre-placement verification mission ever
+  ran (HARD hold, robotics-simulation-missing) -> the robot mission
+  runs (rebar-placement scan / total-station as-built survey /
+  concrete-cure test-cylinder press; human approves) -> the robot
+  panel-placement is dispatched (human approves -- a physical act,
+  never auto) -> the completion inspection is recorded via intake
+  (auto-commits) -> the structure is handed over (human approves,
+  handover certificate rendered) -> site-6 (robot pre-placement
+  mission already on file, but its own as-built-deviation
+  independently rechecks out-of-tolerance -> HARD hold, robotics-
+  simulation-out-of-tolerance, never trusting the on-file verdict
+  alone) -> a USA (IBC §105/§111) build walkthrough -> then four more
   HARD holds (a placement with NO permit on file, a handover with no
   permit+completion-inspection, a double placement, a double handover)
   that never reach a human. Finally prints the audit ledger + the
@@ -121,6 +129,13 @@
     (println (exec! actor "t19" {:op :site/intake :subject "site-4"
                                  :patch {:id "site-4" :permit-issued? true :status :permit}} operator))
 
+    (println "== build/dispatch-placement site-4 before robot pre-placement verification mission ran -> HARD hold (robotics-simulation-missing) ==")
+    (println (exec! actor "t19b" {:op :build/dispatch-placement :subject "site-4"} operator))
+
+    (println "== robotics/simulate-placement-verification site-4 (robot rebar-scan/total-station survey/test-cylinder press mission; escalates -- human approves) ==")
+    (println (exec! actor "t19c" {:op :robotics/simulate-placement-verification :subject "site-4"} operator))
+    (println (approve! actor "t19c"))
+
     (println "== build/dispatch-placement site-4 (robot places exterior-envelope-panel @ north-wall-unit-4; escalates -- human approves, a physical act never auto) ==")
     (let [r (exec! actor "t20" {:op :build/dispatch-placement :subject "site-4"} operator)]
       (println r)
@@ -136,6 +151,9 @@
       (println r)
       (println "-- human safety officer approves the structure handover --")
       (println (approve! actor "t22")))
+
+    (println "== build/dispatch-placement site-6 (robot pre-placement mission on file, but as-built-deviation independently rechecks out-of-tolerance -> HARD hold, robotics-simulation-out-of-tolerance, never trusting the on-file verdict alone) ==")
+    (println (exec! actor "t22b" {:op :build/dispatch-placement :subject "site-6"} operator))
 
     (println "== USA (IBC §105/§111) build walkthrough -- site-5 permit + completion inspection recorded, then handed over ==")
     (println (exec! actor "t23" {:op :site/intake :subject "site-5"

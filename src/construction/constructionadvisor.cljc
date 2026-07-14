@@ -6,8 +6,9 @@
   work-stoppage assessment, screens sites for an unresolved post-event
   hazard, drafts the disaster-alert dispatch (mail + phone) action,
   drafts the work-resume authorization, drafts the accident-report and
-  periodic-report filings, and drafts the physical robot placement-
-  dispatch (build) and structure handover (引渡し) actions. CRITICAL: it
+  periodic-report filings, runs the robot pre-placement verification
+  mission, and drafts the physical robot placement-dispatch (build)
+  and structure handover (引渡し) actions. CRITICAL: it
   is a smart-but-untrusted advisor. It returns a *proposal* (with a
   rationale + the fields it cited), never a committed record, a real
   mail/phone send, or a real filing. Every output is censored
@@ -31,6 +32,7 @@
                :cljs [cljs.reader :as edn])
             [clojure.string :as str]
             [construction.facts :as facts]
+            [construction.robotics :as robotics]
             [construction.store :as store]
             [langchain.model :as model]))
 
@@ -198,6 +200,35 @@
      :stake      :actuation/file-periodic-report
      :confidence (if (and a sb (:periodic-report-basis sb)) 0.85 0.3)}))
 
+(defn- simulate-placement-verification
+  "Runs the robot pre-placement verification mission
+  (`construction.robotics`) and drafts its result as a proposal. High
+  confidence -- the mission itself is deterministic simulated telemetry
+  derived from the site's own recorded as-built-deviation fields, not
+  an LLM guess; the Construction Governor still independently re-
+  derives :passed? from those same fields before any `:build/dispatch-
+  placement` proposal may commit -- see `construction.governor`'s
+  `robotics-simulation-violations`."
+  [db {:keys [subject]}]
+  (let [a (store/site db subject)]
+    (if (nil? a)
+      {:summary "対象現場記録が見つかりません" :rationale "no site record"
+       :cites [] :effect :site/upsert :value {:id subject :robotics-sim-verified? false}
+       :stake nil :confidence 0.0}
+      (let [{:keys [mission actions passed?]} (robotics/simulate-placement-verification subject a)]
+        {:summary    (str subject ": ロボット部材配置前検証ミッション " (if passed? "合格" "不合格"))
+         :rationale  (str "mission=" (:mission/id mission) " actions=" (count actions)
+                          " as-built-deviation-actual=" (:as-built-deviation-actual a))
+         :cites      [(:mission/id mission)]
+         :effect     :site/upsert
+         :value      {:id subject
+                      :robotics-sim-verified? passed?
+                      :robotics-sim-record {:mission-id (:mission/id mission)
+                                            :actions (mapv #(dissoc % :action) actions)
+                                            :passed? passed?}}
+         :stake      nil
+         :confidence 0.95}))))
+
 (defn- propose-dispatch-placement
   "Draft the ROBOT PLACEMENT-DISPATCH action -- a construction robot
   physically places a building element (the Operator Guide's exterior-
@@ -209,7 +240,9 @@
   real physical act, always a human's call (see README `Actuation` +
   operator-guide Day-in-the-life). The Construction Governor
   ADDITIONALLY HARD-requires an ISSUED BUILDING PERMIT on file
-  (check 8) before this can ever commit."
+  (check 8) AND a robot pre-placement verification mission actually
+  run and independently confirmed in-tolerance (check 9,
+  `construction.robotics`) before this can ever commit."
   [db {:keys [subject]}]
   (let [a (store/site db subject)
         sb (facts/spec-basis (:jurisdiction a))
@@ -259,6 +292,7 @@
     :site/intake                           (normalize-intake db request)
     :weather/assess                        (assess-weather db request)
     :inspection/screen                     (screen-hazard db request)
+    :robotics/simulate-placement-verification (simulate-placement-verification db request)
     :actuation/dispatch-alert              (propose-dispatch-alert db request)
     :actuation/authorize-resume            (propose-authorize-resume db request)
     :actuation/file-accident-report        (propose-file-accident-report db request)
@@ -286,6 +320,8 @@
        ":effect(:site/upsert|:weather-assessment/set|:inspection/set|"
        ":site/mark-alert-dispatched|:site/mark-resumed|:site/mark-accident-reported|:site/mark-periodic-reported|"
        ":site/mark-placement-dispatched|:site/mark-handed-over) "
+       "(:robotics/simulate-placement-verification も :site/upsert で "
+       ":robotics-sim-verified? を提案する) "
        ":stake(:actuation/dispatch-alert|:actuation/authorize-resume|:actuation/file-accident-report|"
        ":actuation/file-periodic-report|:build/dispatch-placement|:handover/complete か nil) :confidence(0..1)。\n"
        "重要: 登録されていない法域の要件を絶対に創作してはいけません。"
