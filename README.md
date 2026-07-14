@@ -25,6 +25,30 @@ Governor independently re-derives the site's own as-built-deviation
 tolerance from ground-truth fields, never trusting the mission's
 self-reported verdict alone.
 
+**The concrete-cure test-cylinder press is now a REAL, time-stepped
+physics simulation, not a symbolic placeholder** (ADR-2607152000,
+extending ADR-2607151600's automotive pilot to this vertical):
+`construction.simphysics` runs an actual `kotoba-lang/physics-2d`
+`world-step` rigid-body collision -- a press-platen body closing at a
+controlled velocity (derived from ASTM C39's real 0.25 MPa/s loading-
+rate convention and the design mix's own ACI 318-19 elastic modulus)
+onto a static test-cylinder specimen -- and derives a real,
+non-fabricated `:sim-compressive-strength-mpa` reading from the
+ACTUAL simulated collision impulse. The Construction Governor
+independently rechecks that reading against a real, citable acceptance
+criterion (ACI 318-19 Sec. 26.12.3.1(b)'s single-test floor, plus a
+disclosed sanity ceiling) derived from the site's own `:design-mix-
+rated-strength-mpa` -- this new press check and the existing as-built-
+deviation check are NOT mutually exclusive and may co-fire. The rebar-
+placement scan and total-station survey steps remain the existing
+symbolic ground-truth check -- genuine measurement/inspection steps,
+not a force test, so real rigid-body physics is deliberately not
+force-fit onto them. Honest disclosed scope: a 2D projection
+(`physics-2d` has no 3D solver), and the platen's simulated mass is an
+arbitrary unit value that provably cancels out of the reported ratio
+(see `construction.simphysics`'s own docstring for the full
+derivation and citations).
+
 ## Core Contract
 
 ```text
@@ -88,7 +112,7 @@ gated by a concrete robot pre-placement verification mission:
 
 | Ask | Implementation |
 |---|---|
-| ロボット検証 (robot pre-placement verification) | `:robotics/simulate-placement-verification` -- runs the robot mission (`construction.robotics`: rebar-placement scan / total-station as-built survey / concrete-cure test-cylinder press) and records `:robotics-sim-verified?` + `:robotics-sim-record` on the site (always human approval, never auto) |
+| ロボット検証 (robot pre-placement verification) | `:robotics/simulate-placement-verification` -- runs the robot mission (`construction.robotics`: rebar-placement scan / total-station as-built survey / concrete-cure test-cylinder press -- the press step runs a REAL `physics-2d` press-collision simulation, `construction.simphysics`, ADR-2607152000) and records `:robotics-sim-verified?` + `:robotics-sim-record` + `:sim-compressive-strength-mpa` on the site (always human approval, never auto) |
 | 施工 (build / robot placement) | `:build/dispatch-placement` -- a construction robot physically places a building element (panel @ wall by robot, read off the site's `:build-target`). Governor check 8 HARD-requires an ISSUED BUILDING PERMIT on file, and check 9 HARD-requires the robot pre-placement verification mission to have actually run and independently recheck in-tolerance, before this can ever commit |
 | 引渡し (handover) | `:handover/complete` -- hand over the completed, inspected structure. Governor check 8 ADDITIONALLY HARD-requires a PASSED COMPLETION INSPECTION on file. `construction.registry/render-handover-certificate` produces the completion certificate, citing the jurisdiction's completion-inspection basis inline |
 

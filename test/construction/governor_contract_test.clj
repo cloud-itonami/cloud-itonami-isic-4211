@@ -267,6 +267,8 @@
           _ (simulate-robotics! actor "b4pre2" "site-1")
           r1 (exec-op actor "b4" {:op :build/dispatch-placement :subject "site-1"} operator)]
       (is (= :interrupted (:status r1)) "pauses for human approval even when governor-clean")
+      (is (= 30.0 (:sim-compressive-strength-mpa (store/site db "site-1")))
+          "site-1's clean, standard 300mm/150mm specimen genuinely re-runs the REAL construction.simphysics press simulation and reproduces its 30.0 MPa design-mix rated strength (ADR-2607152000), not a hand-set field")
       (let [r2 (approve! actor "b4")]
         (is (= :commit (get-in r2 [:state :disposition])))
         (is (true? (:placement-dispatched? (store/site db "site-1"))))
@@ -332,6 +334,25 @@
           res (exec-op actor "b10" {:op :build/dispatch-placement :subject "site-6"} operator)]
       (is (= :hold (get-in res [:state :disposition])))
       (is (some #{:robotics-simulation-out-of-tolerance} (-> (store/ledger db) last :basis)))
+      (is (empty? (store/placement-history db))))))
+
+(deftest robotics-simulation-press-out-of-tolerance-is-held-and-co-fires
+  (testing "site-6's cylinder-height-actual-mm (150mm) is a genuine ASTM C39 Sec. 6.2
+            specimen-prep defect (L/D=1.0, outside the ~1.75-2.10 acceptable range) -- the
+            REAL re-run construction.simphysics press simulation reads 60.0 MPa, above the
+            disclosed 45.0 MPa sanity ceiling (1.5x its own 30.0 MPa design-mix rated
+            strength) on INDEPENDENT recheck -> HOLD, :robotics-simulation-press-out-of-
+            tolerance CO-FIRES alongside the existing as-built-deviation violation
+            (ADR-2607152000 -- checks are not mutually exclusive)"
+    (let [[db actor] (fresh)
+          res (exec-op actor "b10b" {:op :build/dispatch-placement :subject "site-6"} operator)
+          basis (-> (store/ledger db) last :basis)]
+      (is (= :hold (get-in res [:state :disposition])))
+      (is (some #{:robotics-simulation-press-out-of-tolerance} basis))
+      (is (some #{:robotics-simulation-out-of-tolerance} basis)
+          "co-fires alongside the pre-existing as-built-deviation violation, not instead of it")
+      (is (= 60.0 (:sim-compressive-strength-mpa (store/site db "site-6")))
+          "genuinely simphysics-derived from the seeded cylinder-height-actual-mm defect, not a hand-set fake field")
       (is (empty? (store/placement-history db))))))
 
 (deftest placement-and-handover-never-auto-at-any-phase

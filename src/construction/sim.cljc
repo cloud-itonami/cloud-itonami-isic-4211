@@ -22,14 +22,20 @@
   attempted BEFORE the robot pre-placement verification mission ever
   ran (HARD hold, robotics-simulation-missing) -> the robot mission
   runs (rebar-placement scan / total-station as-built survey /
-  concrete-cure test-cylinder press; human approves) -> the robot
-  panel-placement is dispatched (human approves -- a physical act,
-  never auto) -> the completion inspection is recorded via intake
-  (auto-commits) -> the structure is handed over (human approves,
-  handover certificate rendered) -> site-6 (robot pre-placement
-  mission already on file, but its own as-built-deviation
-  independently rechecks out-of-tolerance -> HARD hold, robotics-
-  simulation-out-of-tolerance, never trusting the on-file verdict
+  concrete-cure test-cylinder press -- the press step now ACTUALLY
+  runs a real, time-stepped `physics-2d` rigid-body press-collision
+  simulation, `construction.simphysics`, ADR-2607152000, extending
+  ADR-2607151600's automotive pilot to this vertical; human approves)
+  -> the robot panel-placement is dispatched (human approves -- a
+  physical act, never auto) -> the completion inspection is recorded
+  via intake (auto-commits) -> the structure is handed over (human
+  approves, handover certificate rendered) -> site-6 (robot pre-
+  placement mission already on file, but its own as-built-deviation
+  AND its own REAL re-simulated concrete-cure press reading (a genuine
+  ASTM C39 L/D-ratio specimen-prep defect, 150mm actual height vs the
+  300mm standard) BOTH independently recheck out-of-tolerance -> HARD
+  hold, robotics-simulation-out-of-tolerance AND robotics-simulation-
+  press-out-of-tolerance CO-FIRE, never trusting the on-file verdict
   alone) -> a USA (IBC §105/§111) build walkthrough -> then four more
   HARD holds (a placement with NO permit on file, a handover with no
   permit+completion-inspection, a double placement, a double handover)
@@ -132,7 +138,7 @@
     (println "== build/dispatch-placement site-4 before robot pre-placement verification mission ran -> HARD hold (robotics-simulation-missing) ==")
     (println (exec! actor "t19b" {:op :build/dispatch-placement :subject "site-4"} operator))
 
-    (println "== robotics/simulate-placement-verification site-4 (robot rebar-scan/total-station survey/test-cylinder press mission; escalates -- human approves) ==")
+    (println "== robotics/simulate-placement-verification site-4 (robot rebar-scan/total-station survey/test-cylinder press mission -- the press step runs a REAL physics-2d press-collision simulation, ADR-2607152000; escalates -- human approves) ==")
     (println (exec! actor "t19c" {:op :robotics/simulate-placement-verification :subject "site-4"} operator))
     (println (approve! actor "t19c"))
 
@@ -152,7 +158,7 @@
       (println "-- human safety officer approves the structure handover --")
       (println (approve! actor "t22")))
 
-    (println "== build/dispatch-placement site-6 (robot pre-placement mission on file, but as-built-deviation independently rechecks out-of-tolerance -> HARD hold, robotics-simulation-out-of-tolerance, never trusting the on-file verdict alone) ==")
+    (println "== build/dispatch-placement site-6 (robot pre-placement mission on file, but as-built-deviation AND a REAL re-simulated concrete-cure press reading (150mm actual specimen height vs the 300mm ASTM C39 standard) BOTH independently recheck out-of-tolerance -> HARD hold, robotics-simulation-out-of-tolerance + robotics-simulation-press-out-of-tolerance CO-FIRE, never trusting the on-file verdict alone) ==")
     (println (exec! actor "t22b" {:op :build/dispatch-placement :subject "site-6"} operator))
 
     (println "== USA (IBC §105/§111) build walkthrough -- site-5 permit + completion inspection recorded, then handed over ==")

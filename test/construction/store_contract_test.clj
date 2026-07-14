@@ -45,7 +45,15 @@
       (is (some? (:build-target (store/site s "site-4"))) "site-4 carries a build-target for the panel-placement walkthrough")
       (is (false? (:robotics-sim-verified? (store/site s "site-1"))) "no robotics mission has run yet")
       (is (true? (:robotics-sim-verified? (store/site s "site-6"))) "seeded as already-on-file")
-      (is (= 40 (:as-built-deviation-actual (store/site s "site-6")))))))
+      (is (= 40 (:as-built-deviation-actual (store/site s "site-6"))))
+      (is (= 30.0 (:design-mix-rated-strength-mpa (store/site s "site-1"))))
+      (is (= 300.0 (:cylinder-height-actual-mm (store/site s "site-1"))) "standard ASTM C39/EN 12390-3 specimen")
+      (is (= 30.0 (:sim-compressive-strength-mpa (store/site s "site-1")))
+          "genuinely simphysics-derived (ADR-2607152000), not a hand-typed double -- see construction.store/with-press-telemetry")
+      (is (= 150.0 (:cylinder-height-actual-mm (store/site s "site-6")))
+          "seeded with a genuine ASTM C39 Sec. 6.2 L/D-ratio specimen-prep defect (L/D=1.0)")
+      (is (= 60.0 (:sim-compressive-strength-mpa (store/site s "site-6")))
+          "the real re-simulated press reading for that defect, genuinely out of tolerance"))))
 
 (deftest write-and-ledger-parity
   (doseq [[label s] (backends)]
@@ -62,6 +70,10 @@
         (is (true? (:robotics-sim-verified? (store/site s "site-1"))))
         (is (= {:mission-id "m-1" :passed? true} (:robotics-sim-record (store/site s "site-1"))))
         (is (= "Sakura Community Housing Block C" (:name (store/site s "site-1"))) "unrelated field still preserved"))
+      (testing "REAL simphysics press telemetry (ADR-2607152000) commits via :site/upsert and reads back"
+        (store/commit-record! s {:effect :site/upsert
+                                 :value {:id "site-1" :sim-compressive-strength-mpa 30.0}})
+        (is (= 30.0 (:sim-compressive-strength-mpa (store/site s "site-1")))))
       (testing "weather-assessment / inspection payloads commit and read back"
         (store/commit-record! s {:effect :weather-assessment/set :path ["site-1"]
                                  :payload {:jurisdiction "JPN" :recommendation :monitor}})

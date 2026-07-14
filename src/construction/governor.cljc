@@ -147,15 +147,34 @@
                                      (`construction.robotics`) actually
                                      run and been recorded on the site
                                      (`:robotics-sim-verified?`)? AND
-                                     INDEPENDENTLY recompute whether the
+                                     INDEPENDENTLY recompute TWO
+                                     separate ground-truth readings,
+                                     EITHER of which HARD-holds on its
+                                     own (they are NOT mutually
+                                     exclusive and may co-fire,
+                                     ADR-2607152000): (a) does the
                                      site's own recorded as-built-
-                                     deviation reading falls out of its
+                                     deviation reading fall out of its
                                      own recorded tolerance bounds
                                      (`construction.robotics/
-                                     simulation-out-of-tolerance?`),
-                                     ignoring whatever :passed? verdict
-                                     the mission run itself stored --
-                                     the same 'ground truth, not self-
+                                     simulation-out-of-tolerance?`,
+                                     rebar-scan/total-station-survey
+                                     steps -- unchanged, symbolic); (b)
+                                     does the site's own recorded REAL
+                                     `physics-2d`-simulated concrete-
+                                     cure test-cylinder press reading
+                                     (`:sim-compressive-strength-mpa`,
+                                     `construction.simphysics`,
+                                     ADR-2607152000) fall outside the
+                                     real ACI 318-19 Sec. 26.12.3.1(b)
+                                     floor / disclosed sanity ceiling
+                                     derived from the site's OWN
+                                     `:design-mix-rated-strength-mpa`
+                                     (`construction.robotics/press-out-
+                                     of-tolerance?`)? Neither ignores
+                                     whatever :passed? verdict the
+                                     mission run itself stored -- the
+                                     same 'ground truth, not self-
                                      report' discipline check 3
                                      (weather-still-exceeds-threshold)
                                      above uses for weather. Fires ONLY
@@ -360,10 +379,16 @@
 (defn- robotics-simulation-violations
   "For `:build/dispatch-placement`: HARD hold if the robot pre-
   placement verification mission (`construction.robotics`) never ran
-  and was recorded on the site (`:robotics-sim-verified?`), OR if it
-  did but an INDEPENDENT recompute of the site's own as-built-deviation
-  fields (`construction.robotics/simulation-out-of-tolerance?`) says
-  out-of-tolerance right now -- never trusts the mission's own stored
+  and was recorded on the site (`:robotics-sim-verified?`); otherwise
+  INDEPENDENTLY recompute TWO separate ground-truth readings, EITHER of
+  which HARD-holds on its own and BOTH of which may co-fire
+  (ADR-2607152000, the same 'checks are not mutually exclusive'
+  convention this fleet already uses elsewhere): (a) the site's own
+  as-built-deviation fields (`construction.robotics/simulation-out-of-
+  tolerance?`, rebar-scan/total-station-survey -- unchanged, symbolic);
+  (b) the site's own REAL `physics-2d`-simulated concrete-cure test-
+  cylinder press reading (`construction.robotics/press-out-of-
+  tolerance?`, ADR-2607152000). Never trusts the mission's own stored
   :passed? verdict alone, the same discipline `weather-still-exceeds-
   threshold-violations` above uses for weather. Fires ONLY for
   `:build/dispatch-placement`, not `:handover/complete` -- the robot
@@ -372,16 +397,23 @@
   [{:keys [op subject]} st]
   (when (= op :build/dispatch-placement)
     (let [a (store/site st subject)]
-      (cond
-        (not (:robotics-sim-verified? a))
+      (if-not (:robotics-sim-verified? a)
         [{:rule :robotics-simulation-missing
           :detail (str subject " のロボット部材配置前検証ミッション（配筋スキャン/トータルステーション出来形測量/供試体圧縮強度試験）が未実行・未合格")}]
+        (cond-> []
+          (robotics/simulation-out-of-tolerance? a)
+          (conj {:rule :robotics-simulation-out-of-tolerance
+                 :detail (str subject " の出来形（as-built）偏差実測値("
+                              (:as-built-deviation-actual a) ")が独立再検証で許容範囲["
+                              (:as-built-deviation-min a) "," (:as-built-deviation-max a) "]を逸脱")})
 
-        (robotics/simulation-out-of-tolerance? a)
-        [{:rule :robotics-simulation-out-of-tolerance
-          :detail (str subject " の出来形（as-built）偏差実測値("
-                       (:as-built-deviation-actual a) ")が独立再検証で許容範囲["
-                       (:as-built-deviation-min a) "," (:as-built-deviation-max a) "]を逸脱")}]))))
+          (robotics/press-out-of-tolerance? a)
+          (conj {:rule :robotics-simulation-press-out-of-tolerance
+                 :detail (str subject " の供試体（テストシリンダー）圧縮強度シミュレーション値("
+                              (:sim-compressive-strength-mpa a) "MPa)が独立再検証で許容範囲["
+                              (robotics/press-floor-mpa (:design-mix-rated-strength-mpa a)) ","
+                              (robotics/press-ceiling-mpa (:design-mix-rated-strength-mpa a))
+                              "]（設計基準強度" (:design-mix-rated-strength-mpa a) "MPa）を逸脱")}))))))
 
 (defn- already-placement-dispatched-violations
   [{:keys [op subject]} st]

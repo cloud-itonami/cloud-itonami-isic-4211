@@ -53,6 +53,7 @@
   (:require #?(:clj  [clojure.edn :as edn]
                :cljs [cljs.reader :as edn])
             [construction.registry :as registry]
+            [construction.robotics :as robotics]
             [langchain.db :as d]))
 
 (defprotocol Store
@@ -85,81 +86,116 @@
 
 ;; ----------------------------- demo data -----------------------------
 
+(defn- with-press-telemetry
+  "Merges REAL press-collision telemetry onto a demo site's base fields
+  -- `construction.robotics/press-telemetry-for` actually runs
+  `construction.simphysics`'s `physics-2d`-stepped press-collision
+  simulation for this site's own `:design-mix-rated-strength-mpa`/
+  `:cylinder-height-actual-mm`/`:cylinder-diameter-actual-mm`
+  (ADR-2607152000), so even the 'already on file' seed data (as if from
+  an earlier real ASTM C39 lab report) is genuinely simulation-derived,
+  never a hand-typed double."
+  [base]
+  (merge base (select-keys (robotics/press-telemetry-for base) [:sim-compressive-strength-mpa])))
+
 (defn demo-data
   "A small, self-contained site set covering all six actuation
   lifecycles (the four disaster/severe-weather safety events plus the
   two robot-dispatch build/handover events), the robot pre-placement
   verification mission (`:robotics-sim-verified?` / as-built-deviation-*
-  ground-truth fields, `construction.robotics`), and the uncovered-
+  ground-truth fields, `construction.robotics`), the REAL `physics-2d`-
+  simulated concrete-cure test-cylinder press reading
+  (`:design-mix-rated-strength-mpa`/`:cylinder-height-actual-mm`/
+  `:cylinder-diameter-actual-mm` -> `:sim-compressive-strength-mpa`,
+  `with-press-telemetry`, ADR-2607152000), and the uncovered-
   jurisdiction / unresolved-hazard / no-injury / no-permit / no-
   completion-inspection / no-robotics-sim / out-of-tolerance-robotics-
-  sim failure modes, so the actor + tests run offline."
+  sim failure modes, so the actor + tests run offline. site-6's
+  `:cylinder-height-actual-mm` (150mm instead of the ASTM C39/EN
+  12390-3 standard 300mm) is a genuine specimen-preparation defect (an
+  L/D ratio of 1.0, outside ASTM C39's acceptable ~1.75-2.10 range) --
+  its real re-simulated `:sim-compressive-strength-mpa` genuinely reads
+  out of tolerance (see `construction.robotics/press-out-of-
+  tolerance?`), CO-FIRING alongside its existing as-built-deviation
+  violation, not a hand-set fake field."
   []
   {:sites
-   {"site-1" {:id "site-1" :name "Sakura Community Housing Block C"
-              :jurisdiction "JPN" :wind-speed-actual 15 :rainfall-actual 10 :snowfall-actual 0
-              :hazard-unresolved? false :injury-occurred? false :injury-description nil
-              :worker-contacts [{:name "Tanaka" :email "tanaka@example.com" :phone "+819000000001"}
-                                {:name "Suzuki" :email "suzuki@example.com" :phone "+819000000002"}]
-              :alert-dispatched? false :work-resumed? false
-              :accident-reported? false :periodic-report-filed? false
-              :placement-dispatched? false :handed-over? false
-              :permit-issued? false :build-inspection-passed? false
-              :as-built-deviation-actual 5 :as-built-deviation-min -15 :as-built-deviation-max 15
-              :robotics-sim-verified? false :robotics-sim-record nil :status :intake}
-    "site-2" {:id "site-2" :name "Atlantis Waterfront Tower"
-              :jurisdiction "ATL" :wind-speed-actual 12 :rainfall-actual 0 :snowfall-actual 0
-              :hazard-unresolved? false :injury-occurred? false
-              :worker-contacts []
-              :alert-dispatched? false :work-resumed? false
-              :accident-reported? false :periodic-report-filed? false
-              :placement-dispatched? false :handed-over? false
-              :permit-issued? false :build-inspection-passed? false
-              :as-built-deviation-actual 5 :as-built-deviation-min -15 :as-built-deviation-max 15
-              :robotics-sim-verified? false :robotics-sim-record nil :status :intake}
-    "site-3" {:id "site-3" :name "鈴木団地 改修工事"
-              :jurisdiction "JPN" :wind-speed-actual 3 :rainfall-actual 0 :snowfall-actual 0
-              :hazard-unresolved? true :injury-occurred? false
-              :worker-contacts [{:name "Sato" :email "sato@example.com" :phone "+819000000003"}]
-              :alert-dispatched? false :work-resumed? false
-              :accident-reported? false :periodic-report-filed? false
-              :placement-dispatched? false :handed-over? false
-              :permit-issued? false :build-inspection-passed? false
-              :as-built-deviation-actual 5 :as-built-deviation-min -15 :as-built-deviation-max 15
-              :robotics-sim-verified? false :robotics-sim-record nil :status :intake}
-    "site-4" {:id "site-4" :name "田中ビル外壁改修"
-              :jurisdiction "JPN" :wind-speed-actual 2 :rainfall-actual 0 :snowfall-actual 0
-              :hazard-unresolved? false :injury-occurred? false
-              :worker-contacts [{:name "Ito" :email "ito@example.com" :phone "+819000000004"}]
-              :build-target {:panel "exterior-envelope-panel"
-                             :wall-location "north-wall-unit-4"
-                             :robot-id "robot-1"}
-              :alert-dispatched? false :work-resumed? false
-              :accident-reported? false :periodic-report-filed? false
-              :placement-dispatched? false :handed-over? false
-              :permit-issued? false :build-inspection-passed? false
-              :as-built-deviation-actual 5 :as-built-deviation-min -15 :as-built-deviation-max 15
-              :robotics-sim-verified? false :robotics-sim-record nil :status :intake}
-    "site-5" {:id "site-5" :name "Liberty Ave Apartments"
-              :jurisdiction "USA" :wind-speed-actual 20 :rainfall-actual 60 :snowfall-actual 0
-              :hazard-unresolved? false :injury-occurred? false
-              :worker-contacts [{:name "Jordan" :email "jordan@example.com" :phone "+15550000001"}]
-              :alert-dispatched? false :work-resumed? false
-              :accident-reported? false :periodic-report-filed? false
-              :placement-dispatched? false :handed-over? false
-              :permit-issued? false :build-inspection-passed? false
-              :as-built-deviation-actual 5 :as-built-deviation-min -15 :as-built-deviation-max 15
-              :robotics-sim-verified? false :robotics-sim-record nil :status :intake}
-    "site-6" {:id "site-6" :name "ことぶき小学校増築棟"
-              :jurisdiction "JPN" :wind-speed-actual 2 :rainfall-actual 0 :snowfall-actual 0
-              :hazard-unresolved? false :injury-occurred? false
-              :worker-contacts [{:name "Watanabe" :email "watanabe@example.com" :phone "+819000000005"}]
-              :alert-dispatched? false :work-resumed? false
-              :accident-reported? false :periodic-report-filed? false
-              :placement-dispatched? false :handed-over? false
-              :permit-issued? true :build-inspection-passed? false
-              :as-built-deviation-actual 40 :as-built-deviation-min -15 :as-built-deviation-max 15
-              :robotics-sim-verified? true :robotics-sim-record nil :status :build}}})
+   (into {}
+         (map (fn [s] [(:id s) (with-press-telemetry s)]))
+         [{:id "site-1" :name "Sakura Community Housing Block C"
+           :jurisdiction "JPN" :wind-speed-actual 15 :rainfall-actual 10 :snowfall-actual 0
+           :hazard-unresolved? false :injury-occurred? false :injury-description nil
+           :worker-contacts [{:name "Tanaka" :email "tanaka@example.com" :phone "+819000000001"}
+                             {:name "Suzuki" :email "suzuki@example.com" :phone "+819000000002"}]
+           :alert-dispatched? false :work-resumed? false
+           :accident-reported? false :periodic-report-filed? false
+           :placement-dispatched? false :handed-over? false
+           :permit-issued? false :build-inspection-passed? false
+           :as-built-deviation-actual 5 :as-built-deviation-min -15 :as-built-deviation-max 15
+           :design-mix-rated-strength-mpa 30.0 :cylinder-height-actual-mm 300.0 :cylinder-diameter-actual-mm 150.0
+           :robotics-sim-verified? false :robotics-sim-record nil :status :intake}
+          {:id "site-2" :name "Atlantis Waterfront Tower"
+           :jurisdiction "ATL" :wind-speed-actual 12 :rainfall-actual 0 :snowfall-actual 0
+           :hazard-unresolved? false :injury-occurred? false
+           :worker-contacts []
+           :alert-dispatched? false :work-resumed? false
+           :accident-reported? false :periodic-report-filed? false
+           :placement-dispatched? false :handed-over? false
+           :permit-issued? false :build-inspection-passed? false
+           :as-built-deviation-actual 5 :as-built-deviation-min -15 :as-built-deviation-max 15
+           :design-mix-rated-strength-mpa 30.0 :cylinder-height-actual-mm 300.0 :cylinder-diameter-actual-mm 150.0
+           :robotics-sim-verified? false :robotics-sim-record nil :status :intake}
+          {:id "site-3" :name "鈴木団地 改修工事"
+           :jurisdiction "JPN" :wind-speed-actual 3 :rainfall-actual 0 :snowfall-actual 0
+           :hazard-unresolved? true :injury-occurred? false
+           :worker-contacts [{:name "Sato" :email "sato@example.com" :phone "+819000000003"}]
+           :alert-dispatched? false :work-resumed? false
+           :accident-reported? false :periodic-report-filed? false
+           :placement-dispatched? false :handed-over? false
+           :permit-issued? false :build-inspection-passed? false
+           :as-built-deviation-actual 5 :as-built-deviation-min -15 :as-built-deviation-max 15
+           :design-mix-rated-strength-mpa 30.0 :cylinder-height-actual-mm 300.0 :cylinder-diameter-actual-mm 150.0
+           :robotics-sim-verified? false :robotics-sim-record nil :status :intake}
+          {:id "site-4" :name "田中ビル外壁改修"
+           :jurisdiction "JPN" :wind-speed-actual 2 :rainfall-actual 0 :snowfall-actual 0
+           :hazard-unresolved? false :injury-occurred? false
+           :worker-contacts [{:name "Ito" :email "ito@example.com" :phone "+819000000004"}]
+           :build-target {:panel "exterior-envelope-panel"
+                          :wall-location "north-wall-unit-4"
+                          :robot-id "robot-1"}
+           :alert-dispatched? false :work-resumed? false
+           :accident-reported? false :periodic-report-filed? false
+           :placement-dispatched? false :handed-over? false
+           :permit-issued? false :build-inspection-passed? false
+           :as-built-deviation-actual 5 :as-built-deviation-min -15 :as-built-deviation-max 15
+           :design-mix-rated-strength-mpa 30.0 :cylinder-height-actual-mm 300.0 :cylinder-diameter-actual-mm 150.0
+           :robotics-sim-verified? false :robotics-sim-record nil :status :intake}
+          {:id "site-5" :name "Liberty Ave Apartments"
+           :jurisdiction "USA" :wind-speed-actual 20 :rainfall-actual 60 :snowfall-actual 0
+           :hazard-unresolved? false :injury-occurred? false
+           :worker-contacts [{:name "Jordan" :email "jordan@example.com" :phone "+15550000001"}]
+           :alert-dispatched? false :work-resumed? false
+           :accident-reported? false :periodic-report-filed? false
+           :placement-dispatched? false :handed-over? false
+           :permit-issued? false :build-inspection-passed? false
+           :as-built-deviation-actual 5 :as-built-deviation-min -15 :as-built-deviation-max 15
+           :design-mix-rated-strength-mpa 30.0 :cylinder-height-actual-mm 300.0 :cylinder-diameter-actual-mm 150.0
+           :robotics-sim-verified? false :robotics-sim-record nil :status :intake}
+          {:id "site-6" :name "ことぶき小学校増築棟"
+           :jurisdiction "JPN" :wind-speed-actual 2 :rainfall-actual 0 :snowfall-actual 0
+           :hazard-unresolved? false :injury-occurred? false
+           :worker-contacts [{:name "Watanabe" :email "watanabe@example.com" :phone "+819000000005"}]
+           :alert-dispatched? false :work-resumed? false
+           :accident-reported? false :periodic-report-filed? false
+           :placement-dispatched? false :handed-over? false
+           :permit-issued? true :build-inspection-passed? false
+           :as-built-deviation-actual 40 :as-built-deviation-min -15 :as-built-deviation-max 15
+           ;; genuine ASTM C39 Sec. 6.2 specimen-prep defect: L/D = 1.0
+           ;; (150mm/150mm), outside the ~1.75-2.10 acceptable range --
+           ;; a damaged/mis-capped cylinder, not a hand-set fake sim
+           ;; reading (see `with-press-telemetry` above).
+           :design-mix-rated-strength-mpa 30.0 :cylinder-height-actual-mm 150.0 :cylinder-diameter-actual-mm 150.0
+           :robotics-sim-verified? true :robotics-sim-record nil :status :build}])})
 
 ;; ----------------------------- shared commit logic -----------------------------
 
@@ -375,6 +411,8 @@
                          handed-over? handover-number
                          permit-issued? build-inspection-passed?
                          as-built-deviation-actual as-built-deviation-min as-built-deviation-max
+                         design-mix-rated-strength-mpa cylinder-height-actual-mm cylinder-diameter-actual-mm
+                         sim-compressive-strength-mpa
                          robotics-sim-verified? robotics-sim-record status]}]
   (cond-> {:site/id id}
     name                                (assoc :site/name name)
@@ -404,6 +442,10 @@
     (number? as-built-deviation-actual)  (assoc :site/as-built-deviation-actual as-built-deviation-actual)
     (number? as-built-deviation-min)     (assoc :site/as-built-deviation-min as-built-deviation-min)
     (number? as-built-deviation-max)     (assoc :site/as-built-deviation-max as-built-deviation-max)
+    (number? design-mix-rated-strength-mpa) (assoc :site/design-mix-rated-strength-mpa design-mix-rated-strength-mpa)
+    (number? cylinder-height-actual-mm)  (assoc :site/cylinder-height-actual-mm cylinder-height-actual-mm)
+    (number? cylinder-diameter-actual-mm) (assoc :site/cylinder-diameter-actual-mm cylinder-diameter-actual-mm)
+    (number? sim-compressive-strength-mpa) (assoc :site/sim-compressive-strength-mpa sim-compressive-strength-mpa)
     (some? robotics-sim-verified?)       (assoc :site/robotics-sim-verified? robotics-sim-verified?)
     (some? robotics-sim-record)          (assoc :site/robotics-sim-record (enc robotics-sim-record))
     status                              (assoc :site/status status)))
@@ -420,6 +462,8 @@
    :site/handed-over? :site/handover-number
    :site/permit-issued? :site/build-inspection-passed?
    :site/as-built-deviation-actual :site/as-built-deviation-min :site/as-built-deviation-max
+   :site/design-mix-rated-strength-mpa :site/cylinder-height-actual-mm :site/cylinder-diameter-actual-mm
+   :site/sim-compressive-strength-mpa
    :site/robotics-sim-verified? :site/robotics-sim-record :site/status])
 
 (defn- pull->site [m]
@@ -442,6 +486,10 @@
              :as-built-deviation-actual (:site/as-built-deviation-actual m)
              :as-built-deviation-min (:site/as-built-deviation-min m)
              :as-built-deviation-max (:site/as-built-deviation-max m)
+             :design-mix-rated-strength-mpa (:site/design-mix-rated-strength-mpa m)
+             :cylinder-height-actual-mm (:site/cylinder-height-actual-mm m)
+             :cylinder-diameter-actual-mm (:site/cylinder-diameter-actual-mm m)
+             :sim-compressive-strength-mpa (:site/sim-compressive-strength-mpa m)
              :robotics-sim-verified? (boolean (:site/robotics-sim-verified? m))
              :robotics-sim-record (dec* (:site/robotics-sim-record m))
              :status (:site/status m)}

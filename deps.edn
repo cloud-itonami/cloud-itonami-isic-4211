@@ -10,7 +10,20 @@
  :deps {io.github.com-junkawasaki/langgraph-clj
         {:local/root "../../kotoba-lang/langgraph"}
         io.github.kotoba-lang/robotics
-        {:local/root "../../kotoba-lang/robotics"}}
+        {:local/root "../../kotoba-lang/robotics"}
+        ;; REAL time-stepped physics dependency (ADR-2607152000, extending
+        ;; ADR-2607151600's automotive pilot to this vertical):
+        ;; construction.simphysics actually calls physics-2d/world-step to
+        ;; run a real press-platen-vs-test-cylinder rigid-body collision
+        ;; simulation for the concrete-cure test-cylinder compressive-
+        ;; strength press mission step, instead of comparing only static
+        ;; self-reported fields. Unlike automotive (which depends on a
+        ;; sibling design-repo, kami-engine-vehicle-designer, that itself
+        ;; depends on physics-2d transitively), construction has no such
+        ;; sibling and depends on physics-2d directly.
+        io.github.kotoba-lang/physics-2d
+        {:git/url "https://github.com/kotoba-lang/physics-2d.git"
+         :sha "03b6c23c8d9aa36b92a8130fd3e37fc2548b4d26"}}
  :aliases
  {;; offline workspace dev -- pin transitive langchain-clj to local checkout
   :dev {:override-deps

@@ -202,27 +202,35 @@
 
 (defn- simulate-placement-verification
   "Runs the robot pre-placement verification mission
-  (`construction.robotics`) and drafts its result as a proposal. High
+  (`construction.robotics`) and drafts its result as a proposal. This
+  now ACTUALLY calls the REAL `construction.simphysics` engine for the
+  concrete-cure test-cylinder press step (ADR-2607152000): a
+  `physics-2d`-stepped press-collision trajectory, see `construction.
+  robotics/simulate-placement-verification`'s docstring. High
   confidence -- the mission itself is deterministic simulated telemetry
-  derived from the site's own recorded as-built-deviation fields, not
-  an LLM guess; the Construction Governor still independently re-
-  derives :passed? from those same fields before any `:build/dispatch-
-  placement` proposal may commit -- see `construction.governor`'s
-  `robotics-simulation-violations`."
+  derived from the site's own recorded as-built-deviation AND design-
+  mix/cylinder-geometry fields, never an LLM guess; the Construction
+  Governor still independently re-derives :passed? from those same
+  real fields before any `:build/dispatch-placement` proposal may
+  commit -- see `construction.governor`'s `robotics-simulation-
+  violations`."
   [db {:keys [subject]}]
   (let [a (store/site db subject)]
     (if (nil? a)
       {:summary "対象現場記録が見つかりません" :rationale "no site record"
        :cites [] :effect :site/upsert :value {:id subject :robotics-sim-verified? false}
        :stake nil :confidence 0.0}
-      (let [{:keys [mission actions passed?]} (robotics/simulate-placement-verification subject a)]
+      (let [{:keys [mission actions passed? sim-compressive-strength-mpa]}
+            (robotics/simulate-placement-verification subject a)]
         {:summary    (str subject ": ロボット部材配置前検証ミッション " (if passed? "合格" "不合格"))
          :rationale  (str "mission=" (:mission/id mission) " actions=" (count actions)
-                          " as-built-deviation-actual=" (:as-built-deviation-actual a))
+                          " as-built-deviation-actual=" (:as-built-deviation-actual a)
+                          " sim-compressive-strength-mpa=" sim-compressive-strength-mpa)
          :cites      [(:mission/id mission)]
          :effect     :site/upsert
          :value      {:id subject
                       :robotics-sim-verified? passed?
+                      :sim-compressive-strength-mpa sim-compressive-strength-mpa
                       :robotics-sim-record {:mission-id (:mission/id mission)
                                             :actions (mapv #(dissoc % :action) actions)
                                             :passed? passed?}}
