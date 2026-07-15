@@ -13,9 +13,17 @@
   already existed via `vehicle-design-link`, ADR-2607083500), no
   cloud-itonami design-repo sibling exists for construction, so this
   physics module is built DIRECTLY inside this actor (ADR-2607152000
-  Context) and depends on `kotoba-lang/physics-2d` alone -- no BREP/CAM/
-  webgpu-scene bridge (those were specific to automotive's existing
-  design-review tooling).
+  Context) and depends on `kotoba-lang/physics-2d` alone.
+
+  UPDATE (ADR-2607997500): the 'no BREP/CAM/webgpu-scene bridge' gap
+  this paragraph originally disclosed is now CLOSED for the STATIC
+  `:test-cylinder` body specifically -- `construction.cad` (a direct
+  dependency on `kotoba-lang/org-iso-10303`, this actor's own repo, no
+  sibling design-library needed, same reasoning as `physics-2d` above)
+  and `construction.scene` (a `kami.webgpu.mesh`-shaped data bridge)
+  now exist -- see the '## ADR-2607997500' section below for the full,
+  disclosed scope of what this closes and what it does not (the MOVING
+  press-platen still has no CAD envelope of its own).
 
   What is REAL here: a `press-platen` rigid body and a `test-cylinder`
   rigid body are actual `physics-2d` `Body2D`/AABB `Collider2D`
@@ -155,8 +163,65 @@
     an implausible over-reading (e.g. a specimen-dimension data-entry
     error) the way `automotive.robotics/decel-ceiling-g`'s own 2.2x
     factor layers a disclosed margin onto automotive's real 20g
-    reference pulse."
-  (:require [physics-2d :as p2d]))
+    reference pulse.
+
+  ## ADR-2607997500: real CAD/BREP bridge for the STATIC specimen body
+
+  ADR-2607997500 closes the 'no BREP/CAM/webgpu-scene bridge' gap this
+  ns's own docstring used to disclose (see the paragraph above): the
+  `:test-cylinder` body's AABB half-extents are now genuinely derived
+  from `construction.cad/envelope-dims-mm`'s real, tessellated BREP
+  cylinder envelope for THIS site, via `specimen-half-extents-m` below.
+
+  A GENUINE FINDING, CHECKED AGAINST THIS NS'S OWN CODE, NOT ASSUMED
+  FROM `autoparts.robotics`/`fab.simphysics`/`quarryops.robotics`'s
+  shared shape (see `construction.cad`'s own docstring point 1 for the
+  full derivation): in every prior vertical, the CAD envelope sizes the
+  MOVING body, because in those verticals' pull/drop tests the specimen
+  IS the moving body. Here the roles are split -- `platen` is the MOVING
+  body (`:velocity [v0 0.0]`) and `specimen` is the STATIC, mass-0 body
+  (`:velocity [0.0 0.0]`, `:mass 0.0`) -- and it is the STATIC specimen
+  that is genuinely 'the test cylinder' this ADR's CAD envelope models.
+  So THIS ADR CAD-derives the STATIC body's AABB, while the MOVING
+  platen keeps its own fixed `platen-half-w-m`/`platen-half-h-m`
+  constants -- the reverse of the moving-body assignment `autoparts.
+  robotics`/`fab.simphysics`/`quarryops.robotics` use, but the SAME
+  underlying rule stated generally: CAD always sizes THE SPECIMEN,
+  whichever body that is, never the test-rig fixture.
+
+  A SECOND genuine finding, VERIFIED (not merely algebraic) in
+  `simphysics_test.clj`, and STRONGER than every prior vertical's own
+  disclosed default-matching: because `run-press` was ALREADY reading
+  real per-site `:cylinder-height-actual-mm`/`:cylinder-diameter-
+  actual-mm` (or the standard 300/150mm reference dims) directly before
+  this ADR -- see `construction.cad`'s own docstring point 2 -- routing
+  those SAME two values through `construction.cad/envelope-dims-mm` and
+  `specimen-half-extents-m` produces BIT-IDENTICAL `:trajectory`/
+  `:sim-peak-compressive-force-n`/`:sim-peak-compressive-stress-mpa`/
+  `:ticks`/`:dt` results to this ns's pre-ADR-2607997500 inline
+  arithmetic, for EVERY site (real dims or defaulted), not merely
+  epsilon-close for the no-real-data default case the way `autoparts.
+  cad`/`fab.cad`/`quarryops.cad`'s own disclosed defaults are. This ADR
+  is a pure formalization of `run-press`'s existing dimension-sourcing
+  through a real BREP feature-tree + tessellation (for `construction.
+  scene`'s render bridge) -- it adds NO new per-site dimension-sourcing
+  CAPABILITY the physics module lacked, unlike every prior vertical's
+  own CAD extension.
+
+  A THIRD genuine finding, VERIFIED in `simphysics_test.clj` against the
+  ACTUAL simulated `physics-2d` world state, not merely re-asserted from
+  this ns's own 'mass-0 body' prose above: the STATIC specimen's own
+  reported position never changes across the whole simulation (`run-
+  press` now exposes it as `:specimen-position`) -- `physics-2d`'s
+  positional correction/impulse resolution never moves a mass-0
+  (infinite-inverse-mass) body, so the specimen's `physics-2d` position
+  is IDENTICAL at tick 0 and at the final tick. This is WHY
+  `construction.scene` renders the specimen's tessellated mesh at a
+  single fixed position across every frame, unlike every prior
+  vertical's scene bridge (where the CAD-enveloped body genuinely
+  moves) -- see that ns's own docstring."
+  (:require [construction.cad :as cad]
+            [physics-2d :as p2d]))
 
 ;; ---------------------------------------------------------------------------
 ;; Platform shims
@@ -230,6 +295,34 @@
   0.10)
 
 ;; ---------------------------------------------------------------------------
+;; ADR-2607997500 CAD-derived STATIC specimen geometry
+;; ---------------------------------------------------------------------------
+
+(defn specimen-half-extents-m
+  "AABB half-extents (m) for the STATIC `:test-cylinder` body, from
+  `construction.cad/envelope-dims-mm`'s REAL tessellated dims (mm) for a
+  site whose own (or defaulted) dimensions are `height-mm`/`diameter-mm`
+  -- travel-axis half-width = length/2 (length = the cylinder's own
+  axial height), lateral half-height = width/2 (width = the cylinder's
+  own diameter). `height-mm`/`diameter-mm` are handed to `construction.
+  cad/envelope-dims-mm` as an explicit `{:cylinder-height-actual-mm
+  :cylinder-diameter-actual-mm}` map -- since callers of `run-press`
+  always pass already-resolved (defaulted) values, `envelope-dims-mm`'s
+  own `(or explicit default)` fallback is a pure pass-through here, so
+  this reproduces `run-press`'s pre-ADR-2607997500 inline arithmetic
+  BIT-IDENTICALLY, not merely to within floating-point epsilon -- see ns
+  docstring's ADR-2607997500 section, second finding, and
+  `simphysics_test.clj`. PUBLIC (mirrors `fab.simphysics/specimen-half-
+  extents-m`/`autoparts.robotics/specimen-half-extents-m`): the direct,
+  honest way a test/caller can verify CAD dims are genuinely read here."
+  [height-mm diameter-mm]
+  (let [{:keys [length-mm width-mm]}
+        (cad/envelope-dims-mm {:cylinder-height-actual-mm height-mm
+                                :cylinder-diameter-actual-mm diameter-mm})]
+    {:half-w (/ length-mm 2000.0)
+     :half-h (/ width-mm 2000.0)}))
+
+;; ---------------------------------------------------------------------------
 ;; Derivation
 ;; ---------------------------------------------------------------------------
 
@@ -257,22 +350,34 @@
 (defn run-press
   "Runs ONE real `physics-2d` `world-step` simulation: a press-platen
   body closes at `(closing-velocity-mps fc-mpa)` onto a static (mass 0)
-  test-cylinder collider sized `height-mm` x `diameter-mm`. Returns
+  test-cylinder collider sized `height-mm` x `diameter-mm` -- the
+  STATIC specimen's AABB half-extents are now genuinely derived from
+  `specimen-half-extents-m` (`construction.cad`-backed, ADR-2607997500),
+  bit-identically reproducing this fn's own pre-ADR-2607997500 inline
+  arithmetic (see that fn's docstring). Returns
   {:trajectory [{:tick :position :velocity} ...] (platen body only)
-   :peak-decel-mps2 n :ticks n :dt n :closing-velocity-mps n}.
+   :specimen-position [x y] :peak-decel-mps2 n :ticks n :dt n
+   :closing-velocity-mps n}.
 
   `:peak-decel-mps2` is the PEAK magnitude of tick-to-tick velocity
   change (along the travel axis) divided by `dt` -- derived from the
   ACTUAL simulated velocity trajectory, not invented, the same
-  `vdesign.simphysics/simulate` technique (ADR-2607151600)."
+  `vdesign.simphysics/simulate` technique (ADR-2607151600).
+  `:specimen-position` is the test-cylinder body's OWN actual final
+  simulated `physics-2d` position -- ADR-2607997500 exposes it so a
+  caller/test can VERIFY (not merely trust this ns's own prose) that a
+  mass-0 `physics-2d` body never moves: it is IDENTICAL to the
+  specimen's starting position `[0.0 0.0]` on every real run (see ns
+  docstring's ADR-2607997500 section, third finding, and
+  `simphysics_test.clj`)."
   [height-mm diameter-mm fc-mpa]
   (let [height-m (mm->m height-mm)
-        radius-m (/ (mm->m diameter-mm) 2.0)
         v0 (closing-velocity-mps fc-mpa)
         dt (/ (* peak-strain height-m) v0)
         gap-m (* approach-ticks v0 dt)
-        specimen-half-w height-m
-        specimen-half-w (/ specimen-half-w 2.0)
+        {:keys [half-w half-h]} (specimen-half-extents-m height-mm diameter-mm)
+        specimen-half-w half-w
+        specimen-half-h half-h
         specimen-x 0.0
         platen-x0 (- specimen-x specimen-half-w platen-half-w-m gap-m)
         platen (p2d/make-body {:position [platen-x0 0.0]
@@ -287,34 +392,63 @@
                                   :mass 0.0
                                   :restitution 0.0
                                   :friction 0.0
-                                  :collider (p2d/make-aabb-collider specimen-half-w radius-m)
+                                  :collider (p2d/make-aabb-collider specimen-half-w specimen-half-h)
                                   :user-data :test-cylinder})
         w0 (p2d/world-new [0.0 0.0])
         [w1 pid] (p2d/world-add w0 platen)
-        [w2 _sid] (p2d/world-add w1 specimen)
+        [w2 sid] (p2d/world-add w1 specimen)
         ticks (+ approach-ticks settle-ticks)
         worlds (reductions (fn [w _] (p2d/world-step w dt)) w2 (range ticks))
         trajectory (mapv (fn [tick world]
                             (let [b (nth (:bodies world) pid)]
                               {:tick tick :position (:position b) :velocity (:velocity b)}))
                           (range (count worlds)) worlds)
+        specimen-position (:position (nth (:bodies (last worlds)) sid))
         vxs (mapv (comp first :velocity) trajectory)
         peak-decel (->> (map (fn [va vb] (abs* (/ (- vb va) dt))) vxs (rest vxs))
                          (reduce max 0.0))]
     {:trajectory trajectory
+     :specimen-position specimen-position
      :peak-decel-mps2 peak-decel
      :ticks (count trajectory)
      :dt dt
      :closing-velocity-mps v0}))
 
+(defn resolve-press-inputs
+  "{:fc-mpa :height-mm :diameter-mm} for `site`: its own recorded
+  `:design-mix-rated-strength-mpa`/`:cylinder-height-actual-mm`/
+  `:cylinder-diameter-actual-mm` when present, defaulting to a clean
+  30 MPa / standard 150x300mm specimen (the SAME defaults `press-
+  telemetry` always used) when absent. Extracted from `press-telemetry`
+  (ADR-2607997500) so `actual-run-for-site`/`construction.scene` can run
+  ONE real trajectory for a site's own actual-dimension run without
+  duplicating this defaulting logic -- a minor DRY refactor, not a
+  behavior change (`press-telemetry` below now calls this too, and
+  produces IDENTICAL results to before)."
+  [{:keys [design-mix-rated-strength-mpa cylinder-height-actual-mm cylinder-diameter-actual-mm]}]
+  {:fc-mpa (double (or design-mix-rated-strength-mpa 30.0))
+   :height-mm (double (or cylinder-height-actual-mm nominal-height-mm))
+   :diameter-mm (double (or cylinder-diameter-actual-mm nominal-diameter-mm))})
+
+(defn actual-run-for-site
+  "Runs `run-press` for `site`'s own actual (or defaulted) dimensions --
+  the SAME actual-dimension run `press-telemetry`'s ratio is computed
+  against, but returning the FULL `run-press` result (incl.
+  `:trajectory`/`:specimen-position`), for `construction.scene`'s render
+  bridge. `press-telemetry` itself does not expose `:trajectory` -- it
+  only keeps summary fields."
+  [site]
+  (let [{:keys [fc-mpa height-mm diameter-mm]} (resolve-press-inputs site)]
+    (run-press height-mm diameter-mm fc-mpa)))
+
 (defn press-telemetry
   "Runs TWO real `physics-2d` press-collision simulations for `design`
   (a map of {:design-mix-rated-strength-mpa :cylinder-height-actual-mm
   :cylinder-diameter-actual-mm}, defaulting to a clean 30 MPa / standard
-  150x300mm specimen when a key is missing): one at THIS specimen's own
-  actual recorded dimensions, one at the ASTM/EN standard reference
-  dimensions -- both real `run-press` invocations, same design-mix
-  strength/closing-velocity. Returns:
+  150x300mm specimen when a key is missing, via `resolve-press-inputs`):
+  one at THIS specimen's own actual recorded dimensions, one at the
+  ASTM/EN standard reference dimensions -- both real `run-press`
+  invocations, same design-mix strength/closing-velocity. Returns:
 
     {:sim-compressive-strength-mpa n
      :sim-press-peak-decel-actual-mps2 n
@@ -328,14 +462,12 @@
   strength (MPa) so the result is directly comparable to a real,
   citable acceptance criterion (ACI 318-19 Sec. 26.12.3.1(b), see
   `construction.robotics/press-out-of-tolerance?`)."
-  [{:keys [design-mix-rated-strength-mpa cylinder-height-actual-mm cylinder-diameter-actual-mm]}]
-  (let [fc (double (or design-mix-rated-strength-mpa 30.0))
-        h  (double (or cylinder-height-actual-mm nominal-height-mm))
-        d  (double (or cylinder-diameter-actual-mm nominal-diameter-mm))
-        actual (run-press h d fc)
-        nominal (run-press nominal-height-mm nominal-diameter-mm fc)
+  [design]
+  (let [{:keys [fc-mpa height-mm diameter-mm]} (resolve-press-inputs design)
+        actual (run-press height-mm diameter-mm fc-mpa)
+        nominal (run-press nominal-height-mm nominal-diameter-mm fc-mpa)
         ratio (/ (:peak-decel-mps2 actual) (:peak-decel-mps2 nominal))]
-    {:sim-compressive-strength-mpa (* fc ratio)
+    {:sim-compressive-strength-mpa (* fc-mpa ratio)
      :sim-press-peak-decel-actual-mps2 (:peak-decel-mps2 actual)
      :sim-press-peak-decel-nominal-mps2 (:peak-decel-mps2 nominal)
      :sim-press-ticks (:ticks actual)
