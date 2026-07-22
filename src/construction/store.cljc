@@ -50,11 +50,10 @@
   the audit trail a community trusting a construction operator needs,
   and the evidence an operator needs if a stop-work or resume decision
   is later disputed."
-  (:require #?(:clj  [clojure.edn :as edn]
-               :cljs [cljs.reader :as edn])
-            [construction.registry :as registry]
+  (:require [construction.registry :as registry]
             [construction.robotics :as robotics]
-            [langchain.db :as d]))
+            [langchain.db :as d]
+            [langchain-store.core :as ls]))
 
 (defprotocol Store
   (site [s id])
@@ -380,26 +379,17 @@
   Map/compound values (weather-assessment/inspection payloads, ledger
   facts, alert/resume/report records) are stored as EDN strings so
   `langchain.db` doesn't expand them into sub-entities -- the same
-  convention every sibling actor's store uses."
-  {:site/id                                {:db/unique :db.unique/identity}
-   :weather-assessment/site-id             {:db/unique :db.unique/identity}
-   :inspection/site-id                     {:db/unique :db.unique/identity}
-   :ledger/seq                             {:db/unique :db.unique/identity}
-   :alert/seq                              {:db/unique :db.unique/identity}
-   :resume/seq                             {:db/unique :db.unique/identity}
-   :accident-report/seq                    {:db/unique :db.unique/identity}
-   :periodic-report/seq                    {:db/unique :db.unique/identity}
-   :placement/seq                          {:db/unique :db.unique/identity}
-   :handover/seq                           {:db/unique :db.unique/identity}
-   :alert-sequence/jurisdiction            {:db/unique :db.unique/identity}
-   :resume-sequence/jurisdiction           {:db/unique :db.unique/identity}
-   :accident-report-sequence/jurisdiction  {:db/unique :db.unique/identity}
-   :periodic-report-sequence/jurisdiction  {:db/unique :db.unique/identity}
-   :placement-sequence/jurisdiction        {:db/unique :db.unique/identity}
-   :handover-sequence/jurisdiction         {:db/unique :db.unique/identity}})
-
-(defn- enc [v] (pr-str v))
-(defn- dec* [s] (when s (edn/read-string s)))
+  convention every sibling actor's store uses. The identity-schema
+  builder, EDN-blob codec and seq-keyed event-log read/append are the
+  shared kotoba-lang/langchain-store machinery (ADR-2607141600) -- the
+  seam ~190 actors hand-roll; this store keeps only its domain wiring."
+  (ls/identity-schema
+   [:site/id :weather-assessment/site-id :inspection/site-id
+    :ledger/seq :alert/seq :resume/seq :accident-report/seq :periodic-report/seq
+    :placement/seq :handover/seq
+    :alert-sequence/jurisdiction :resume-sequence/jurisdiction
+    :accident-report-sequence/jurisdiction :periodic-report-sequence/jurisdiction
+    :placement-sequence/jurisdiction :handover-sequence/jurisdiction]))
 
 (defn- site->tx [{:keys [id name jurisdiction wind-speed-actual rainfall-actual snowfall-actual
                          hazard-unresolved? injury-occurred? injury-description worker-contacts build-target
@@ -423,8 +413,8 @@
     (some? hazard-unresolved?)          (assoc :site/hazard-unresolved? hazard-unresolved?)
     (some? injury-occurred?)            (assoc :site/injury-occurred? injury-occurred?)
     injury-description                  (assoc :site/injury-description injury-description)
-    worker-contacts                     (assoc :site/worker-contacts-edn (enc worker-contacts))
-    build-target                        (assoc :site/build-target-edn (enc build-target))
+    worker-contacts                     (assoc :site/worker-contacts-edn (ls/enc worker-contacts))
+    build-target                        (assoc :site/build-target-edn (ls/enc build-target))
     (some? alert-dispatched?)           (assoc :site/alert-dispatched? alert-dispatched?)
     alert-number                        (assoc :site/alert-number alert-number)
     (some? work-resumed?)               (assoc :site/work-resumed? work-resumed?)
@@ -447,7 +437,7 @@
     (number? cylinder-diameter-actual-mm) (assoc :site/cylinder-diameter-actual-mm cylinder-diameter-actual-mm)
     (number? sim-compressive-strength-mpa) (assoc :site/sim-compressive-strength-mpa sim-compressive-strength-mpa)
     (some? robotics-sim-verified?)       (assoc :site/robotics-sim-verified? robotics-sim-verified?)
-    (some? robotics-sim-record)          (assoc :site/robotics-sim-record (enc robotics-sim-record))
+    (some? robotics-sim-record)          (assoc :site/robotics-sim-record (ls/enc robotics-sim-record))
     status                              (assoc :site/status status)))
 
 (def ^:private site-pull
@@ -474,7 +464,7 @@
              :hazard-unresolved? (boolean (:site/hazard-unresolved? m))
              :injury-occurred? (boolean (:site/injury-occurred? m))
              :injury-description (:site/injury-description m)
-             :worker-contacts (dec* (:site/worker-contacts-edn m))
+             :worker-contacts (ls/dec* (:site/worker-contacts-edn m))
              :alert-dispatched? (boolean (:site/alert-dispatched? m)) :alert-number (:site/alert-number m)
              :work-resumed? (boolean (:site/work-resumed? m)) :resume-number (:site/resume-number m)
              :accident-reported? (boolean (:site/accident-reported? m)) :accident-report-number (:site/accident-report-number m)
@@ -491,9 +481,9 @@
              :cylinder-diameter-actual-mm (:site/cylinder-diameter-actual-mm m)
              :sim-compressive-strength-mpa (:site/sim-compressive-strength-mpa m)
              :robotics-sim-verified? (boolean (:site/robotics-sim-verified? m))
-             :robotics-sim-record (dec* (:site/robotics-sim-record m))
+             :robotics-sim-record (ls/dec* (:site/robotics-sim-record m))
              :status (:site/status m)}
-      (:site/build-target-edn m) (assoc :build-target (dec* (:site/build-target-edn m))))))
+      (:site/build-target-edn m) (assoc :build-target (ls/dec* (:site/build-target-edn m))))))
 
 (defrecord DatomicStore [conn]
   Store
@@ -504,35 +494,20 @@
          (map #(pull->site (d/pull (d/db conn) site-pull [:site/id %])))
          (sort-by :id)))
   (weather-assessment-of [_ site-id]
-    (dec* (d/q '[:find ?p . :in $ ?sid
+    (ls/dec* (d/q '[:find ?p . :in $ ?sid
                 :where [?e :weather-assessment/site-id ?sid] [?e :weather-assessment/payload ?p]]
               (d/db conn) site-id)))
   (inspection-of [_ site-id]
-    (dec* (d/q '[:find ?p . :in $ ?sid
+    (ls/dec* (d/q '[:find ?p . :in $ ?sid
                 :where [?e :inspection/site-id ?sid] [?e :inspection/payload ?p]]
               (d/db conn) site-id)))
-  (ledger [_]
-    (->> (d/q '[:find ?s ?f :where [?e :ledger/seq ?s] [?e :ledger/fact ?f]] (d/db conn))
-         (sort-by first)
-         (mapv (comp dec* second))))
-  (alert-history [_]
-    (->> (d/q '[:find ?s ?r :where [?e :alert/seq ?s] [?e :alert/record ?r]] (d/db conn))
-         (sort-by first) (mapv (comp dec* second))))
-  (resume-history [_]
-    (->> (d/q '[:find ?s ?r :where [?e :resume/seq ?s] [?e :resume/record ?r]] (d/db conn))
-         (sort-by first) (mapv (comp dec* second))))
-  (accident-report-history [_]
-    (->> (d/q '[:find ?s ?r :where [?e :accident-report/seq ?s] [?e :accident-report/record ?r]] (d/db conn))
-         (sort-by first) (mapv (comp dec* second))))
-  (periodic-report-history [_]
-    (->> (d/q '[:find ?s ?r :where [?e :periodic-report/seq ?s] [?e :periodic-report/record ?r]] (d/db conn))
-         (sort-by first) (mapv (comp dec* second))))
-  (placement-history [_]
-    (->> (d/q '[:find ?s ?r :where [?e :placement/seq ?s] [?e :placement/record ?r]] (d/db conn))
-         (sort-by first) (mapv (comp dec* second))))
-  (handover-history [_]
-    (->> (d/q '[:find ?s ?r :where [?e :handover/seq ?s] [?e :handover/record ?r]] (d/db conn))
-         (sort-by first) (mapv (comp dec* second))))
+  (ledger [_] (ls/read-stream conn :ledger/seq :ledger/fact))
+  (alert-history [_] (ls/read-stream conn :alert/seq :alert/record))
+  (resume-history [_] (ls/read-stream conn :resume/seq :resume/record))
+  (accident-report-history [_] (ls/read-stream conn :accident-report/seq :accident-report/record))
+  (periodic-report-history [_] (ls/read-stream conn :periodic-report/seq :periodic-report/record))
+  (placement-history [_] (ls/read-stream conn :placement/seq :placement/record))
+  (handover-history [_] (ls/read-stream conn :handover/seq :handover/record))
   (next-alert-sequence [_ jurisdiction]
     (or (d/q '[:find ?n . :in $ ?j
               :where [?e :alert-sequence/jurisdiction ?j] [?e :alert-sequence/next ?n]]
@@ -569,10 +544,10 @@
       (d/transact! conn [(site->tx value)])
 
       :weather-assessment/set
-      (d/transact! conn [{:weather-assessment/site-id (first path) :weather-assessment/payload (enc payload)}])
+      (d/transact! conn [{:weather-assessment/site-id (first path) :weather-assessment/payload (ls/enc payload)}])
 
       :inspection/set
-      (d/transact! conn [{:inspection/site-id (first path) :inspection/payload (enc payload)}])
+      (d/transact! conn [{:inspection/site-id (first path) :inspection/payload (ls/enc payload)}])
 
       :site/mark-alert-dispatched
       (let [site-id (first path)
@@ -582,7 +557,7 @@
         (d/transact! conn
                      [(site->tx (assoc site-patch :id site-id))
                       {:alert-sequence/jurisdiction jurisdiction :alert-sequence/next next-n}
-                      {:alert/seq (count (alert-history s)) :alert/record (enc (get result "record"))}])
+                      {:alert/seq (count (alert-history s)) :alert/record (ls/enc (get result "record"))}])
         result)
 
       :site/mark-resumed
@@ -593,7 +568,7 @@
         (d/transact! conn
                      [(site->tx (assoc site-patch :id site-id))
                       {:resume-sequence/jurisdiction jurisdiction :resume-sequence/next next-n}
-                      {:resume/seq (count (resume-history s)) :resume/record (enc (get result "record"))}])
+                      {:resume/seq (count (resume-history s)) :resume/record (ls/enc (get result "record"))}])
         result)
 
       :site/mark-accident-reported
@@ -604,7 +579,7 @@
         (d/transact! conn
                      [(site->tx (assoc site-patch :id site-id))
                       {:accident-report-sequence/jurisdiction jurisdiction :accident-report-sequence/next next-n}
-                      {:accident-report/seq (count (accident-report-history s)) :accident-report/record (enc (get result "record"))}])
+                      {:accident-report/seq (count (accident-report-history s)) :accident-report/record (ls/enc (get result "record"))}])
         result)
 
       :site/mark-periodic-reported
@@ -615,7 +590,7 @@
         (d/transact! conn
                      [(site->tx (assoc site-patch :id site-id))
                       {:periodic-report-sequence/jurisdiction jurisdiction :periodic-report-sequence/next next-n}
-                      {:periodic-report/seq (count (periodic-report-history s)) :periodic-report/record (enc (get result "record"))}])
+                      {:periodic-report/seq (count (periodic-report-history s)) :periodic-report/record (ls/enc (get result "record"))}])
         result)
 
       :site/mark-placement-dispatched
@@ -626,7 +601,7 @@
         (d/transact! conn
                      [(site->tx (assoc site-patch :id site-id))
                       {:placement-sequence/jurisdiction jurisdiction :placement-sequence/next next-n}
-                      {:placement/seq (count (placement-history s)) :placement/record (enc (get result "record"))}])
+                      {:placement/seq (count (placement-history s)) :placement/record (ls/enc (get result "record"))}])
         result)
 
       :site/mark-handed-over
@@ -637,12 +612,12 @@
         (d/transact! conn
                      [(site->tx (assoc site-patch :id site-id))
                       {:handover-sequence/jurisdiction jurisdiction :handover-sequence/next next-n}
-                      {:handover/seq (count (handover-history s)) :handover/record (enc (get result "record"))}])
+                      {:handover/seq (count (handover-history s)) :handover/record (ls/enc (get result "record"))}])
         result)
       nil)
     s)
   (append-ledger! [s fact]
-    (d/transact! conn [{:ledger/seq (count (ledger s)) :ledger/fact (enc fact)}])
+    (ls/append-blob! conn :ledger/seq :ledger/fact (count (ledger s)) fact)
     fact)
   (with-sites [s sites]
     (when (seq sites) (d/transact! conn (mapv site->tx (vals sites)))) s))

@@ -11,6 +11,11 @@
         {:local/root "../../kotoba-lang/langgraph"}
         io.github.kotoba-lang/robotics
         {:local/root "../../kotoba-lang/robotics"}
+        ;; langchain-store: the shared langchain.db store seam (EDN-blob
+        ;; codec + identity schema + event-log helpers) that ~190 actors
+        ;; hand-roll; construction.store is an adopter (ADR-2607141600).
+        io.github.kotoba-lang/langchain-store
+        {:local/root "../../kotoba-lang/langchain-store"}
         ;; REAL time-stepped physics dependency (ADR-2607152000, extending
         ;; ADR-2607151600's automotive pilot to this vertical):
         ;; construction.simphysics actually calls physics-2d/world-step to
