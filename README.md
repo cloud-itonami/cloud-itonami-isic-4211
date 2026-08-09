@@ -65,7 +65,17 @@ No automated advice can dispatch a robot action the governor refuses, suppress
 an operating record, or disclose sensitive data without governor approval and
 audit evidence.
 
-A live sample of the operator console (robotics safety console, shared template) is rendered in [docs/samples/operator-console.html](docs/samples/operator-console.html) — pure-data HTML output of `kotoba.robotics.ui`.
+A live sample of the operator console is rendered in
+[docs/samples/operator-console.html](docs/samples/operator-console.html).
+It is **generated at build time by running this repo's own actor**
+(`clojure -M:dev:render-html` → `construction.render-html`, which drives
+`construction.operation` → `construction.governor` → `construction.store` →
+`construction.registry`): every site id, registry number, ledger fact and
+HARD-hold rule on that page is read back out of the store after a real run,
+not hand-written. The run is deterministic — two consecutive regenerations
+are byte-identical. Styling is
+[`kotoba-lang/jp-go-digital-design-system`](https://github.com/kotoba-lang/jp-go-digital-design-system)
+(DADS), the same design system as the product face.
 
 ## Capability layer
 
