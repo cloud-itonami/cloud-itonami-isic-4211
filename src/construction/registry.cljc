@@ -30,7 +30,7 @@
   (that is `construction.operation`'s `:actuation/*`/:build/*/:handover/*
   ops + `construction.notify`, always human-gated except
   `:actuation/dispatch-alert` -- see README `Actuation`)."
-  (:require [clojure.string :as str]
+  (:require [kotoba.lang.text :as str]
             [construction.facts :as facts]))
 
 (defn- zero-pad [n w]
@@ -52,7 +52,7 @@
     (throw (ex-info "alert-dispatch: jurisdiction required" {})))
   (when (< sequence 0)
     (throw (ex-info "alert-dispatch: sequence must be >= 0" {})))
-  (let [alert-number (str (str/upper-case jurisdiction) "-ALT-" (zero-pad sequence 6))]
+  (let [alert-number (str (str/upper jurisdiction) "-ALT-" (zero-pad sequence 6))]
     {"record" {"record_id" alert-number "kind" "alert-dispatch-draft"
                "site_id" site-id "jurisdiction" jurisdiction "immutable" true}
      "alert_number" alert-number}))
@@ -72,7 +72,7 @@
     (throw (ex-info "resume-authorization: jurisdiction required" {})))
   (when (< sequence 0)
     (throw (ex-info "resume-authorization: sequence must be >= 0" {})))
-  (let [resume-number (str (str/upper-case jurisdiction) "-RSM-" (zero-pad sequence 6))]
+  (let [resume-number (str (str/upper jurisdiction) "-RSM-" (zero-pad sequence 6))]
     {"record" {"record_id" resume-number "kind" "resume-authorization-draft"
                "site_id" site-id "jurisdiction" jurisdiction "immutable" true}
      "resume_number" resume-number}))
@@ -90,7 +90,7 @@
     (throw (ex-info "accident-report: jurisdiction required" {})))
   (when (< sequence 0)
     (throw (ex-info "accident-report: sequence must be >= 0" {})))
-  (let [report-number (str (str/upper-case jurisdiction) "-ACR-" (zero-pad sequence 6))]
+  (let [report-number (str (str/upper jurisdiction) "-ACR-" (zero-pad sequence 6))]
     {"record" {"record_id" report-number "kind" "accident-report-draft"
                "site_id" site-id "jurisdiction" jurisdiction "immutable" true}
      "report_number" report-number}))
@@ -106,7 +106,7 @@
     (throw (ex-info "periodic-report: jurisdiction required" {})))
   (when (< sequence 0)
     (throw (ex-info "periodic-report: sequence must be >= 0" {})))
-  (let [report-number (str (str/upper-case jurisdiction) "-PDR-" (zero-pad sequence 6))]
+  (let [report-number (str (str/upper jurisdiction) "-PDR-" (zero-pad sequence 6))]
     {"record" {"record_id" report-number "kind" "periodic-report-draft"
                "site_id" site-id "jurisdiction" jurisdiction "immutable" true}
      "report_number" report-number}))
@@ -128,7 +128,7 @@
     (throw (ex-info "placement-dispatch: jurisdiction required" {})))
   (when (< sequence 0)
     (throw (ex-info "placement-dispatch: sequence must be >= 0" {})))
-  (let [placement-number (str (str/upper-case jurisdiction) "-PLC-" (zero-pad sequence 6))]
+  (let [placement-number (str (str/upper jurisdiction) "-PLC-" (zero-pad sequence 6))]
     {"record" {"record_id" placement-number "kind" "placement-dispatch-draft"
                "site_id" site-id "jurisdiction" jurisdiction "immutable" true}
      "placement_number" placement-number}))
@@ -148,7 +148,7 @@
     (throw (ex-info "handover-completion: jurisdiction required" {})))
   (when (< sequence 0)
     (throw (ex-info "handover-completion: sequence must be >= 0" {})))
-  (let [handover-number (str (str/upper-case jurisdiction) "-HDO-" (zero-pad sequence 6))]
+  (let [handover-number (str (str/upper jurisdiction) "-HDO-" (zero-pad sequence 6))]
     {"record" {"record_id" handover-number "kind" "handover-completion-draft"
                "site_id" site-id "jurisdiction" jurisdiction "immutable" true}
      "handover_number" handover-number}))

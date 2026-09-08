@@ -19,7 +19,7 @@
   to send one -- that is `construction.governor` (may this proposal
   commit at all?) and `construction.phase` (may it auto-commit, or
   does it need a human first?). See README `Actuation`."
-  (:require [clojure.string :as str]))
+  (:require [kotoba.lang.text :as str]))
 
 (defprotocol Notifier
   (-send-mail! [n msg] "msg: {:to :subject :body} -> {:status :channel :to ..}")
