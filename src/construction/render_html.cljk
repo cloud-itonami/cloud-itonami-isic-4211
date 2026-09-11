@@ -20,7 +20,7 @@
   high-stakes`) and is labelled as such in place.
 
   The scenario is adapted from this repo's own `construction.sim` demo
-  driver (`clojure -M:dev:run`, run BEFORE writing this file to confirm
+  driver (`kbb -M:dev:run`, run BEFORE writing this file to confirm
   it produces a sensible ledger). `construction.sim`'s site ids
   (`site-1`..`site-6`) were cross-checked against `construction.store/
   demo-data` and all six really exist there, so reusing the scenario
@@ -32,7 +32,7 @@
   the page content. Two consecutive runs against the same seed produce
   byte-identical output (verify by diffing them).
 
-  Usage: `clojure -M:dev:render-html [out-file]`
+  Usage: `kbb -M:dev:render-html [out-file]`
   (default `docs/samples/operator-console.html`)."
   (:require [jp-go-dds.skin]
             [kotoba.lang.text :as str]
@@ -289,7 +289,7 @@
      "<main>\n"
      "  <section class=\"card\">\n"
      "    <h2>Construction sites</h2>\n"
-     "    <p class=\"muted\">Demo snapshot — build-time-generated from <code>construction.store</code> via <code>construction.render-html</code> (<code>clojure -M:dev:render-html</code>). Every value below is read back out of the store after a real <code>construction.operation</code> actor run.</p>\n"
+     "    <p class=\"muted\">Demo snapshot — build-time-generated from <code>construction.store</code> via <code>construction.render-html</code> (<code>kbb -M:dev:render-html</code>). Every value below is read back out of the store after a real <code>construction.operation</code> actor run.</p>\n"
      "    <table>\n"
      "      <thead><tr><th>Site</th><th>Name</th><th>Jurisdiction</th><th>Building-code facts</th><th>Actuations fired (registry number)</th><th>Last op status</th></tr></thead>\n"
      "      <tbody>\n"

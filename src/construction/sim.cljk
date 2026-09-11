@@ -1,5 +1,5 @@
 (ns construction.sim
-  "Demo driver -- `clojure -M:dev:run`. Walks a site through a full
+  "Demo driver -- `kbb -M:dev:run`. Walks a site through a full
   typhoon/disaster episode: intake (severe weather already measured) ->
   weather assessment (stop-work, human approves) -> hazard-inspection
   screening (resolved, human approves) -> alert dispatch (AUTO-commits
