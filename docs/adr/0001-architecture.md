@@ -44,7 +44,7 @@ Store/Phase/Governor scaffolding.
 
 ### Decision 2: legal basis is DATA (`construction.facts`), not code, with an honest quantitative/qualitative split
 
-`src/construction/facts.cljc`'s `catalog` seeds three jurisdictions
+`src/construction/facts.cljk`'s `catalog` seeds three jurisdictions
 with real official-source citations:
 
 - **JPN** -- 労働安全衛生規則 第522条 (work-stoppage) / 第655条
@@ -145,7 +145,7 @@ request shape it sends) to keep this actor standalone-forkable per
 
 `construction.store/Store` is implemented by both `MemStore` (atom-
 backed default) and `DatomicStore` (`langchain.db`-backed), proven to
-satisfy the same contract in `test/construction/store_contract_test.clj`
+satisfy the same contract in `test/construction/store_contract_test.cljk`
 -- the same seam every sibling actor uses.
 
 ### Decision 9: `blueprint.edn` merge with the concurrent network-isekai game reference (PR #1)
