@@ -126,7 +126,7 @@ gated by a concrete robot pre-placement verification mission:
 | 施工 (build / robot placement) | `:build/dispatch-placement` -- a construction robot physically places a building element (panel @ wall by robot, read off the site's `:build-target`). Governor check 8 HARD-requires an ISSUED BUILDING PERMIT on file, and check 9 HARD-requires the robot pre-placement verification mission to have actually run and independently recheck in-tolerance, before this can ever commit |
 | 引渡し (handover) | `:handover/complete` -- hand over the completed, inspected structure. Governor check 8 ADDITIONALLY HARD-requires a PASSED COMPLETION INSPECTION on file. `construction.registry/render-handover-certificate` produces the completion certificate, citing the jurisdiction's completion-inspection basis inline |
 
-**Legal basis is data, not code** -- `src/construction/facts.cljc`'s
+**Legal basis is data, not code** -- `src/construction/facts.cljk`'s
 `catalog` is the per-jurisdiction EDN source-of-truth the governor
 checks every proposal against (JPN/USA/DEU seeded; DEU stands in for
 the EU, the same convention `aerospace.facts` uses for EASA):
