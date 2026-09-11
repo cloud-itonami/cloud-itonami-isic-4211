@@ -40,7 +40,7 @@ intake : design : permit : build : inspect : handover : audit
 > (the robot dispatch) and `:handover/complete` (the structure handover), both
 > gated by the `:construction-governor`'s `permit-and-inspection-required` HARD
 > check (issued building permit + passed completion inspection). Run
-> `clojure -M:dev:run` to see the site-4 (田中ビル外壁改修) episode execute
+> `kbb -M:dev:run` to see the site-4 (田中ビル外壁改修) episode execute
 > end-to-end, including the no-permit / no-completion-inspection / double-
 > placement / double-handover HARD holds. See `docs/adr/0002-robot-dispatch-slice.md`.
 

@@ -68,7 +68,7 @@ audit evidence.
 A live sample of the operator console is rendered in
 [docs/samples/operator-console.html](docs/samples/operator-console.html).
 It is **generated at build time by running this repo's own actor**
-(`clojure -M:dev:render-html` → `construction.render-html`, which drives
+(`kbb -M:dev:render-html` → `construction.render-html`, which drives
 `construction.operation` → `construction.governor` → `construction.store` →
 `construction.registry`): every site id, registry number, ledger fact and
 HARD-hold rule on that page is read back out of the store after a real run,
@@ -174,9 +174,9 @@ never auto-eligible at any phase either -- see
 pre-placement verification mission gating `:build/dispatch-placement`.
 
 ```bash
-clojure -M:dev:run    # demo: full typhoon episode + robot-dispatch build slice + robot pre-placement verification + every HARD hold
-clojure -M:dev:test   # 83 tests / 372 assertions
-clojure -M:lint       # clj-kondo, errors fail
+kbb -M:dev:run    # demo: full typhoon episode + robot-dispatch build slice + robot pre-placement verification + every HARD hold
+kbb -M:dev:test   # 83 tests / 372 assertions
+kbb -M:lint       # clj-kondo, errors fail
 ```
 
 ## License
