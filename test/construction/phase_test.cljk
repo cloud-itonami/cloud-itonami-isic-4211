@@ -5,7 +5,7 @@
   any phase's `:auto` set. `:actuation/dispatch-alert` is the ONE
   deliberate exception -- see `construction.phase` ns docstring
   'Actuation' section."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [construction.phase :as phase]))
 
 (deftest authorize-resume-never-auto-at-any-phase

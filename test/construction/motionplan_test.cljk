@@ -4,7 +4,7 @@
   sequence (ADR-2607997500). Direct port of fab.motionplan-test's/
   quarryops.motionplan-test's own assertions, adapted to construction's
   own mission-actions/site shape."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [construction.cad :as cad]
             [construction.motionplan :as motionplan]
             [construction.robotics :as robotics]))

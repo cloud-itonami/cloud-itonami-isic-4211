@@ -1,5 +1,5 @@
 (ns construction.registry-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [kotoba.test :refer [deftest is]]
             [construction.registry :as r]))
 
 ;; ----------------------------- register-alert-dispatch -----------------------------

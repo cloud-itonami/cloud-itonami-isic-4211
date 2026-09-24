@@ -1,5 +1,5 @@
 (ns construction.notify-test
-  (:require [clojure.test :refer [deftest is]]
+  (:require [kotoba.test :refer [deftest is]]
             [construction.notify :as notify]))
 
 (deftest mock-notifier-records-mail-and-phone-sends

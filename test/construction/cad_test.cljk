@@ -6,7 +6,7 @@
   construction.cad's own docstring point 3). Adapted from fab.cad-test's/
   quarryops.cad-test's assertions to this vertical's own already-real
   :cylinder-height-actual-mm/:cylinder-diameter-actual-mm fields."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [construction.cad :as cad]
             [construction.simphysics :as simphysics]))
 
