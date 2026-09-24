@@ -3,7 +3,7 @@
   measures (every run numeric, count = expected), that the numbers come
   from the simulation (both derived band edges really straddle the ACI
   floor / sanity ceiling), and that a changed solver would show."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [construction.physics-probe :as probe]
             [construction.robotics :as robotics]
             [construction.simphysics :as simphysics]))

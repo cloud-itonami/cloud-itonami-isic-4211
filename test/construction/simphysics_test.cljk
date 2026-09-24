@@ -16,7 +16,7 @@
   prior vertical, CAD-derived geometry reproduces this ns's pre-ADR
   behavior BIT-IDENTICALLY (not merely epsilon-close), and the STATIC
   specimen's own position is verified never to move."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [construction.cad :as cad]
             [construction.simphysics :as sp]))
 

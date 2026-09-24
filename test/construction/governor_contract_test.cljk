@@ -12,7 +12,7 @@
     AND a human-approved stop-work assessment is on file (the
     deliberate safety-first exception); and every decision (commit OR
     hold) leaves exactly one ledger fact."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [langgraph.graph :as g]
             [construction.store :as store]
             [construction.operation :as op]

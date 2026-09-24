@@ -10,7 +10,7 @@
   translation is IDENTICAL here, because the mesh models the STATIC
   test-cylinder specimen, not the moving press-platen -- see the last
   two tests."
-  (:require [clojure.test :refer [deftest is testing]]
+  (:require [kotoba.test :refer [deftest is testing]]
             [construction.simphysics :as simphysics]
             [construction.scene :as scene]))
 
