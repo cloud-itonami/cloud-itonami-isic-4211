@@ -1,0 +1,51 @@
+(ns construction.physics-probe-test
+  "The probe is the bot's only source of \"measured\"; these pin that it
+  measures (every run numeric, count = expected), that the numbers come
+  from the simulation (both derived band edges really straddle the ACI
+  floor / sanity ceiling), and that a changed solver would show."
+  (:require [clojure.test :refer [deftest is testing]]
+            [construction.physics-probe :as probe]
+            [construction.robotics :as robotics]
+            [construction.simphysics :as simphysics]))
+
+(deftest probe-measures-every-run
+  (let [p (probe/probe)]
+    (is (= "itonami.physical-ai.probe.v1" (:physics-probe/schema p)))
+    (is (pos? (:count p)))
+    (is (= (:count p) (:expected p) (count (:runs p))))
+    (testing "every run carries a numeric strength and tick count from the trajectory"
+      (doseq [r (:runs p)]
+        (is (number? (get-in r [:quantities :sim-compressive-strength-mpa])))
+        (is (pos? (get-in r [:quantities :sim-press-ticks])))))))
+
+(deftest strength-falls-as-the-specimen-gets-taller
+  (let [ss (map #(get-in % [:quantities :sim-compressive-strength-mpa]) (:runs (probe/probe)))]
+    (is (apply > ss))))
+
+(deftest seeded-fixtures-land-on-both-sides-of-the-band
+  (let [by-h (into {} (map (juxt #(get-in % [:input :cylinder-height-actual-mm]) identity))
+                   (:runs (probe/probe)))]
+    (is (false? (:out-of-tolerance? (get by-h 300.0))))
+    (is (true? (:out-of-tolerance? (get by-h 150.0))))))
+
+(deftest derived-band-edges-straddle-floor-and-ceiling
+  (let [[lo hi] (probe/passing-height-band-mm)
+        s (fn [h] (:sim-compressive-strength-mpa
+                   (robotics/press-telemetry-for {:design-mix-rated-strength-mpa probe/fc-mpa
+                                                  :cylinder-height-actual-mm h
+                                                  :cylinder-diameter-actual-mm probe/diameter-mm})))
+        floor (simphysics/strength-floor-mpa probe/fc-mpa)
+        ceiling (simphysics/strength-ceiling-mpa probe/fc-mpa)]
+    (is (number? lo))
+    (is (number? hi))
+    (is (< lo simphysics/nominal-height-mm hi))
+    (testing "short edge: at lo the reading is within the ceiling; 1% shorter it exceeds it"
+      (is (<= (s lo) ceiling))
+      (is (> (s (* 0.99 lo)) ceiling)))
+    (testing "tall edge: at hi the reading meets the floor; 1% taller it falls below"
+      (is (>= (s hi) floor))
+      (is (< (s (* 1.01 hi)) floor)))))
+
+(deftest bracket-that-does-not-straddle-answers-nil
+  (is (nil? (probe/passing-height-band-mm 250.0 1000.0 10)))
+  (is (nil? (probe/passing-height-band-mm 50.0 320.0 10))))
